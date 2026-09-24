@@ -4,11 +4,16 @@
   "description": "Big-screen dance-along: upload songs in /admin, auto-generated routines play on /screen.",
   "main": "server.js",
   "private": true,
-  "scripts": { "start": "node server.js" },
-  "engines": { "node": ">=18" },
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "express": "^4.21.2",
     "multer": "^2.0.2",
+    "qrcode": "^1.5.4",
     "socket.io": "^4.8.1"
   }
 }

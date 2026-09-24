@@ -6,6 +6,7 @@ const http = require('http');
 const express = require('express');
 const multer = require('multer');
 const { Server } = require('socket.io');
+const QRCode = require('qrcode');
 
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
@@ -15,6 +16,8 @@ const sign = what => PASSWORD ? crypto.createHmac('sha256', PASSWORD).update(wha
 const TOKEN = sign('glowstep-admin');
 const SCREEN_TOKEN = sign('glowstep-screen'); // changes whenever the password does, which unlinks old screens
 const QUEUE_FILE = path.join(DATA_DIR, 'queue.json');
+const VOTES_FILE = path.join(DATA_DIR, 'votes.json');
+const PUBLIC_URL = (process.env.PUBLIC_URL || '').replace(/\/+$/, '');
 fs.mkdirSync(SONG_DIR, { recursive: true });
 
 const app = express();
@@ -42,6 +45,7 @@ function requireScreen(req, res, next) {
 }
 
 app.disable('x-powered-by');
+app.set('trust proxy', 1); // Railway's proxy: gives the real client IP and https protocol
 app.use((req, res, next) => { res.setHeader('X-Robots-Tag', 'noindex, nofollow'); next(); });
 app.use(express.json({ limit: '2mb' }));
 
@@ -58,6 +62,13 @@ app.get('/screen', (req, res) => {
     return res.redirect('/screen');
   }
   page(isScreen(req) ? 'screen.html' : 'screen-locked.html')(req, res);
+});
+app.get('/vote', page('vote.html'));
+app.get('/vote-qr.svg', async (req, res) => {
+  try {
+    const svg = await QRCode.toString(voteUrl(req), { type: 'svg', margin: 1, errorCorrectionLevel: 'M', color: { dark: '#0C0A24', light: '#FFFFFF' } });
+    res.type('image/svg+xml').setHeader('Cache-Control', 'no-cache'); res.send(svg);
+  } catch (e) { res.status(500).end(); }
 });
 app.get('/login', (req, res) => (PASSWORD ? page('login.html')(req, res) : res.redirect('/admin')));
 app.get('/admin', requireAdmin, page('admin.html'));
@@ -79,8 +90,9 @@ function readSong(id) {
   if (!validId(id)) return null;
   try { return JSON.parse(fs.readFileSync(metaPath(id), 'utf8')); } catch { return null; }
 }
+let songsCache = null;
 function listSongs() {
-  return fs.readdirSync(SONG_DIR).filter(f => f.endsWith('.json'))
+  return songsCache ||= fs.readdirSync(SONG_DIR).filter(f => f.endsWith('.json'))
     .map(f => readSong(f.slice(0, -5))).filter(Boolean)
     .map(({ beats, energy, bars, ...rest }) => ({ ...rest, barCount: bars?.length || 0 }))
     .sort((a, b) => a.createdAt - b.createdAt);
@@ -132,7 +144,7 @@ app.post('/api/songs', requireAdmin, upload.single('audio'), (req, res) => {
     ...pickSong(analysis)
   };
   fs.writeFileSync(metaPath(song.id), JSON.stringify(song));
-  io.to('admin').emit('songs', listSongs());
+  songsChanged();
   res.json(song);
 });
 
@@ -141,8 +153,8 @@ app.put('/api/songs/:id', requireAdmin, (req, res) => {
   if (!s) return res.status(404).json({ error: 'Song not found.' });
   const next = { ...s, ...pickSong(req.body), updatedAt: Date.now() };
   fs.writeFileSync(metaPath(s.id), JSON.stringify(next));
-  io.to('admin').emit('songs', listSongs());
-  if (state.songId === s.id) io.emit('songUpdated', s.id);
+  songsChanged();
+  if (state.songId === s.id) io.to('screens').emit('songUpdated', s.id);
   res.json(next);
 });
 
@@ -151,10 +163,11 @@ app.delete('/api/songs/:id', requireAdmin, (req, res) => {
   if (!s) return res.status(404).json({ error: 'Song not found.' });
   fs.rmSync(path.join(SONG_DIR, s.file), { force: true });
   fs.rmSync(metaPath(s.id), { force: true });
+  if (votes[s.id]) { delete votes[s.id]; saveVotes(); }
   const queue = state.queue.filter(q => q.songId !== s.id);
   if (state.songId === s.id) setState({ songId: null, status: 'idle', offset: 0, queue });
   else if (queue.length !== state.queue.length) setState({ queue });
-  io.to('admin').emit('songs', listSongs());
+  songsChanged();
   res.json({ ok: true });
 });
 
@@ -162,7 +175,9 @@ app.delete('/api/songs/:id', requireAdmin, (req, res) => {
 // status: idle | ready | playing | paused | ended
 // queue: songs waiting to play, in order ({ qid, songId }); the song on screen is not in it.
 // auto: the next automatic step once a song ends ({ step: 'next' | 'play', at }), or null.
-let state = { songId: null, status: 'idle', offset: 0, startedAt: 0, rev: 0, queue: [], autoplay: true, auto: null };
+// voting: crowd voting settings (on, show the QR code on screen, allow repeat votes).
+let state = { songId: null, status: 'idle', offset: 0, startedAt: 0, rev: 0, queue: [], autoplay: true, auto: null,
+  voting: { on: false, qr: true, repeat: true } };
 let endTimer = null, autoTimer = null;
 const LEAD_MS = 600;       // give every screen a moment to start in sync
 const SWITCH_MS = 2500;    // longer when the song changes, so screens can fetch and decode it
@@ -174,9 +189,10 @@ try {
   const saved = JSON.parse(fs.readFileSync(QUEUE_FILE, 'utf8'));
   state.queue = (saved.queue || []).filter(q => q && validId(q.songId) && readSong(q.songId)).slice(0, QUEUE_MAX);
   state.autoplay = saved.autoplay !== false;
+  if (saved.voting) state.voting = { ...state.voting, ...saved.voting };
 } catch {}
 function saveQueue() {
-  try { fs.writeFileSync(QUEUE_FILE, JSON.stringify({ queue: state.queue, autoplay: state.autoplay })); } catch (e) { console.error('Could not save the queue:', e.message); }
+  try { fs.writeFileSync(QUEUE_FILE, JSON.stringify({ queue: state.queue, autoplay: state.autoplay, voting: state.voting })); } catch (e) { console.error('Could not save the queue:', e.message); }
 }
 
 function position() {
@@ -185,7 +201,7 @@ function position() {
 }
 // Any change cancels a pending automatic step unless the patch sets a new one.
 function setState(patch) {
-  const prevQueue = state.queue, prevAuto = state.autoplay;
+  const prevQueue = state.queue, prevAuto = state.autoplay, prevVoting = state.voting;
   state = { ...state, auto: null, ...patch, rev: state.rev + 1 };
   clearTimeout(endTimer); clearTimeout(autoTimer);
   if (state.status === 'playing') {
@@ -196,9 +212,74 @@ function setState(patch) {
     }
   }
   if (state.auto) autoTimer = setTimeout(runAuto, Math.max(0, state.auto.at - Date.now()));
-  if (state.queue !== prevQueue || state.autoplay !== prevAuto) saveQueue();
-  io.emit('state', state);
+  if (state.queue !== prevQueue || state.autoplay !== prevAuto || state.voting !== prevVoting) saveQueue();
+  // A song's votes are used up once it plays.
+  if (state.status === 'playing' && votes[state.songId]) { delete votes[state.songId]; saveVotes(); }
+  io.to(['screens', 'admin']).emit('state', state);
+  pushVotes();
 }
+
+/* ---------- crowd voting ---------- */
+// votes: songId -> { n: total votes, by: { voterId: votes from that phone } }
+let votes = {};
+try { votes = JSON.parse(fs.readFileSync(VOTES_FILE, 'utf8')) || {}; } catch {}
+const VOTE_GAP_MS = 5000;      // one vote per phone every 5 seconds
+const IP_VOTES_PER_MIN = 120;  // generous, since a whole venue can share one IP
+const lastVote = new Map(), ipHits = new Map();
+setInterval(() => { const t = Date.now() - 60000; for (const m of [lastVote, ipHits]) for (const [k, v] of m) if ((v.t ?? v) < t) m.delete(k); }, 60000).unref();
+
+let saveVotesT = null;
+function saveVotes() {
+  clearTimeout(saveVotesT);
+  saveVotesT = setTimeout(() => fs.writeFile(VOTES_FILE, JSON.stringify(votes), e => e && console.error('Could not save votes:', e.message)), 1000);
+}
+const onScreen = id => state.songId === id && ['ready', 'playing', 'paused'].includes(state.status);
+function board() {
+  const queued = new Set(state.queue.map(q => q.songId));
+  return {
+    on: state.voting.on, repeat: state.voting.repeat,
+    songs: listSongs().map(s => ({ id: s.id, title: s.title, votes: votes[s.id]?.n || 0, flag: onScreen(s.id) ? 'playing' : queued.has(s.id) ? 'queued' : null }))
+  };
+}
+// Batch updates so a burst of votes doesn't flood every phone.
+let pushVotesT = null;
+function pushVotes() {
+  if (pushVotesT) return;
+  pushVotesT = setTimeout(() => { pushVotesT = null; const b = board(); io.to('admin').emit('votes', b); io.to('voters').emit('votes', b.on ? b : { on: false }); }, 300);
+}
+function songsChanged() { songsCache = null; io.to('admin').emit('songs', listSongs()); pushVotes(); }
+function voterId(req, res) {
+  let id = cookies(req.headers.cookie).gs_voter;
+  if (!/^[a-f0-9]{16}$/.test(id || '')) {
+    id = crypto.randomBytes(8).toString('hex');
+    res.setHeader('Set-Cookie', `gs_voter=${id}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 365}`);
+  }
+  return id;
+}
+const voteUrl = req => `${PUBLIC_URL || `${req.protocol}://${req.get('host')}`}/vote`;
+const mineOf = id => Object.fromEntries(Object.entries(votes).filter(([, v]) => v.by?.[id]).map(([k, v]) => [k, v.by[id]]));
+
+app.get('/api/vote', (req, res) => {
+  const id = voterId(req, res);
+  res.setHeader('Cache-Control', 'no-store');
+  res.json(state.voting.on ? { ...board(), mine: mineOf(id) } : { on: false });
+});
+app.post('/api/vote', (req, res) => {
+  if (!state.voting.on) return res.status(403).json({ error: 'Voting is closed right now.' });
+  const id = voterId(req, res), songId = String(req.body?.songId || '');
+  if (!listSongs().some(s => s.id === songId)) return res.status(404).json({ error: 'That song is not in the list any more.' });
+  if (onScreen(songId)) return res.status(409).json({ error: "That one's on right now! Pick another." });
+  const now = Date.now(), wait = VOTE_GAP_MS - (now - (lastVote.get(id) || 0));
+  if (wait > 0) return res.status(429).json({ error: `Hold on ${Math.ceil(wait / 1000)}s before voting again.`, wait });
+  const ip = ipHits.get(req.ip); const hits = ip && now - ip.t < 60000 ? ip : { n: 0, t: now };
+  if (++hits.n > IP_VOTES_PER_MIN) return res.status(429).json({ error: 'Lots of votes from this network. Try again in a minute.', wait: 60000 });
+  ipHits.set(req.ip, hits);
+  const rec = votes[songId] ||= { n: 0, by: {} };
+  if (!state.voting.repeat && rec.by[id]) return res.status(409).json({ error: "You've already voted for this one." });
+  rec.n++; rec.by[id] = (rec.by[id] || 0) + 1; lastVote.set(id, now);
+  saveVotes(); pushVotes();
+  res.json({ ok: true, votes: rec.n, mine: rec.by[id], wait: VOTE_GAP_MS });
+});
 // After a song finishes, the next queued one comes up by itself (if autoplay is on).
 const autoAfterEnd = (queue = state.queue) => state.autoplay && queue.length ? { step: 'next', at: Date.now() + BREAK_MS } : null;
 function songEnded() { setState({ status: 'ended', offset: 0, auto: autoAfterEnd() }); }
@@ -221,7 +302,8 @@ const screens = new Map(); // socket.id -> report
 function pushScreens() { io.to('admin').emit('screens', [...screens.values()]); }
 
 io.on('connection', socket => {
-  const role = socket.handshake.query.role === 'admin' ? 'admin' : 'screen';
+  const role = ['admin', 'vote'].includes(socket.handshake.query.role) ? socket.handshake.query.role : 'screen';
+  if (role === 'vote') { socket.join('voters'); const b = board(); return socket.emit('votes', b.on ? b : { on: false }); }
   const authed = role === 'admin' && isAdminCookie(socket.handshake.headers.cookie);
 
   socket.on('timesync', (_, cb) => typeof cb === 'function' && cb(Date.now()));
@@ -236,6 +318,7 @@ io.on('connection', socket => {
       pushScreens();
     });
     socket.on('disconnect', () => { screens.delete(socket.id); pushScreens(); });
+    socket.join('screens');
     socket.emit('state', state);
     return;
   }
@@ -244,6 +327,7 @@ io.on('connection', socket => {
   socket.join('admin');
   socket.emit('state', state);
   socket.emit('songs', listSongs());
+  socket.emit('votes', board());
   socket.emit('screens', [...screens.values()]);
 
   socket.on('cmd', (c = {}) => {
@@ -271,6 +355,14 @@ io.on('connection', socket => {
         return startFromQueue(c.qid, true);
       case 'next':
         return startFromQueue(state.queue[0]?.qid, true);
+      case 'voting': {
+        const v = state.voting;
+        const pick = k => typeof c[k] === 'boolean' ? c[k] : v[k];
+        return setState({ voting: { on: pick('on'), qr: pick('qr'), repeat: pick('repeat') }, auto: state.auto });
+      }
+      case 'resetVotes':
+        if (c.songId) delete votes[c.songId]; else votes = {};
+        saveVotes(); return pushVotes();
       case 'hold':
         return setState({});
       case 'play':
@@ -291,7 +383,7 @@ io.on('connection', socket => {
       case 'clear':
         return setState({ songId: null, status: 'idle', offset: 0, startedAt: 0 });
       case 'say':
-        return io.emit('say', { text: String(c.text || '').slice(0, 60), big: !!c.big, at: now });
+        return io.to('screens').emit('say', { text: String(c.text || '').slice(0, 60), big: !!c.big, at: now });
     }
   });
 });

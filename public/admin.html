@@ -76,6 +76,30 @@ a.link{color:var(--cyan);font-weight:600;text-decoration:none;font-size:14px} a.
 .qi .x:hover{color:var(--bad);border-color:rgba(248,113,113,.5)}
 .qi:first-child .num{color:var(--cyan)}
 .qfoot{margin:10px 0 0;font-size:13px;color:var(--muted)}
+/* crowd voting */
+.switch{display:flex;align-items:center;gap:10px;font-weight:600;cursor:pointer}
+.switch input{appearance:none;width:46px;height:26px;border-radius:999px;background:var(--panel2);border:1px solid var(--line);position:relative;cursor:pointer;transition:background .15s;flex:none;margin:0}
+.switch input::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:var(--muted);transition:transform .15s,background .15s}
+.switch input:checked{background:var(--good);border-color:var(--good)}
+.switch input:checked::after{transform:translateX(20px);background:#06240f}
+.vgrid{display:grid;grid-template-columns:auto minmax(0,1fr);gap:16px;margin-top:14px}
+@media (max-width:640px){.vgrid{grid-template-columns:1fr}}
+.vqr{width:150px;display:flex;flex-direction:column;gap:6px}
+.vqr img{width:150px;height:150px;border-radius:12px;background:#fff;padding:6px}
+.vqr a{font-size:12px;color:var(--cyan);word-break:break-all}
+.vopts{display:flex;flex-direction:column;gap:8px;font-size:14px}
+.vopts label{display:flex;gap:8px;align-items:flex-start;color:var(--muted)} .vopts label b{color:var(--ink);font-weight:600}
+.vopts input{margin-top:3px}
+.board{list-style:none;margin:14px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.board li{display:grid;grid-template-columns:28px minmax(0,1fr) auto auto;gap:4px 10px;align-items:center;padding:8px 10px;border-radius:12px;background:var(--panel2)}
+.board .rk{font-weight:800;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+.board li:first-child .rk{color:var(--sun)}
+.board .tt{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.board .tt small{font-weight:800;font-size:10px;letter-spacing:.08em;color:var(--cyan);margin-left:6px}
+.board .vc{font-weight:800;font-variant-numeric:tabular-nums;color:var(--pink);white-space:nowrap}
+.board .vb{grid-column:2/5;height:4px;border-radius:2px;background:rgba(255,255,255,.08);overflow:hidden}
+.board .vb b{display:block;height:100%;background:linear-gradient(90deg,var(--cyan),var(--pink))}
+.song .m .vt{color:var(--pink);font-weight:600}
 .auto{grid-column:1/3;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;border-radius:12px;background:rgba(39,217,245,.1);border:1px solid rgba(39,217,245,.35);color:var(--cyan);font-weight:600;font-size:14px}
 .auto span{flex:1;min-width:0}
 
@@ -219,6 +243,29 @@ input[type=range]{accent-color:var(--pink)}
       <p class="qfoot" id="qFoot" hidden>Drag ⋮⋮ to reorder. Skip jumps straight to the top song.</p>
     </section>
 
+    <section class="card" aria-labelledby="vH">
+      <div class="qhead">
+        <h2 id="vH">Crowd voting</h2>
+        <span class="spacer"></span>
+        <label class="switch"><input type="checkbox" id="vOn" role="switch"> <span id="vOnLbl">Off</span></label>
+      </div>
+      <p class="empty" id="vIntro" style="margin:0">Turn this on to let people scan a QR code and vote for songs. Votes show up here, and you choose what goes in the queue.</p>
+      <div class="vgrid" id="vBody" hidden>
+        <div class="vqr"><img src="/vote-qr.svg" alt="QR code for the voting page"><a id="vLink" target="_blank" rel="noopener"></a><button class="btn sm" id="vCopy">Copy vote link</button></div>
+        <div class="vopts">
+          <label><input type="checkbox" id="vQr"> <span><b>Show the QR code on the stage screen</b><br>Big in the corner between songs, smaller while people dance.</span></label>
+          <label><input type="checkbox" id="vRepeat"> <span><b>Allow repeat votes</b><br>Each phone can vote once every 5 seconds, as often as it likes. Turn off for one vote per song per phone.</span></label>
+          <p style="margin:4px 0 0;color:var(--dim);font-size:13px">A song's votes reset when it starts playing, and nobody can vote for the song that's on.</p>
+        </div>
+      </div>
+      <div class="qhead" style="margin:16px 0 0" id="vBoardHead" hidden>
+        <h2>Most wanted</h2><span class="spacer"></span>
+        <button class="btn sm" id="vQueueTop" title="Add the top-voted song that isn't already queued">Queue the top song</button>
+        <button class="btn sm bad" id="vReset">Reset votes</button>
+      </div>
+      <ol class="board" id="vBoard"></ol>
+    </section>
+
     <section class="card" aria-labelledby="edH" id="editor">
       <h2 id="edH">Routine editor</h2>
       <div class="placeholder" id="edEmpty"><div><b>No song selected</b>Upload or pick a song on the left to see its routine.</div></div>
@@ -288,6 +335,8 @@ const fmt = GS.fmt;
 const LEVELS = ['Chill','Groove','Party'];
 const LVCOL = ['var(--violet)','var(--cyan)','var(--pink)'];
 
+let vboard = { songs: [] };
+const votesOf = id => vboard.songs.find(s => s.id === id)?.votes || 0;
 let songs = [], sel = null, selBuf = null, dirty = false, selBar = null, undoBars = null;
 let live = { songId:null, status:'idle', offset:0, startedAt:0 }, screens = [], skew = 0, uploads = [];
 const pv = new GS.Stage($('#pv'), { idleLabel: 'Press Preview to watch the routine' });
@@ -308,8 +357,9 @@ socket.on('connect', async () => {
   for (let i = 0; i < 5; i++) { const t0 = Date.now(); const st = await new Promise(r => socket.timeout(2000).emit('timesync', 0, (e, v) => r(e ? null : v))); const t1 = Date.now(); if (st && t1 - t0 < best) { best = t1 - t0; skew = st - (t0 + t1) / 2; } }
 });
 socket.on('songs', list => { songs = list; renderLibrary(); renderQueue(); renderLive(); });
-socket.on('state', s => { live = s; renderLive(); renderLibrary(); renderQueue(); });
+socket.on('state', s => { live = s; renderLive(); renderLibrary(); renderQueue(); renderVoting(); });
 socket.on('screens', s => { screens = s; renderScreens(); });
+socket.on('votes', b => { vboard = b; renderVotes(); renderLibrary(); });
 const cmd = (type, extra = {}) => socket.emit('cmd', { type, ...extra });
 fetch('/api/config').then(r => r.json()).then(c => { $('#pwBanner').hidden = c.passwordSet; $('#bScreenLink').hidden = !c.passwordSet; });
 $('#bScreenLink').onclick = async () => {
@@ -336,7 +386,7 @@ function renderLibrary() {
     const badge = on ? `<span class="badge">${live.status === 'playing' ? 'PLAYING' : 'ON SCREEN'}</span>` : nq ? `<span class="badge q">QUEUED${nq > 1 ? ' ×' + nq : ''}</span>` : '';
     items.push(`<li><button class="song ${sel?.id === s.id ? 'sel' : ''}" data-id="${s.id}">
       <span class="t">${esc(s.title)}</span>
-      <span class="m">${fmt(s.duration)} · ${s.bpm ? Math.round(s.bpm) + ' BPM' : 'no beats yet'} · ${s.barCount} bars</span>
+      <span class="m">${fmt(s.duration)} · ${s.bpm ? Math.round(s.bpm) + ' BPM' : 'no beats yet'} · ${s.barCount} bars${votesOf(s.id) ? ` · <span class="vt">${votesOf(s.id)} vote${votesOf(s.id) === 1 ? '' : 's'}</span>` : ''}</span>
       ${badge}
     </button><button class="qadd" data-q="${s.id}" aria-label="Add ${esc(s.title)} to the queue" title="Add to queue">+</button></li>`);
   }
@@ -563,6 +613,34 @@ function dragStart(e, li, grip) {
   };
   grip.addEventListener('pointermove', move); grip.addEventListener('pointerup', end); grip.addEventListener('pointercancel', end);
 }
+/* ---------- crowd voting ---------- */
+function renderVoting() {
+  const v = live.voting || {};
+  $('#vOn').checked = !!v.on; $('#vOnLbl').textContent = v.on ? 'On' : 'Off';
+  $('#vBody').hidden = !v.on; $('#vIntro').hidden = !!v.on;
+  $('#vQr').checked = !!v.qr; $('#vRepeat').checked = !!v.repeat;
+  const url = location.origin + '/vote'; $('#vLink').href = url; $('#vLink').textContent = url.replace(/^https?:\/\//, '');
+}
+function renderVotes() {
+  const top = vboard.songs.filter(s => s.votes).sort((a, b) => b.votes - a.votes).slice(0, 10), max = top[0]?.votes || 1;
+  $('#vBoardHead').hidden = !top.length;
+  $('#vBoard').innerHTML = top.map((s, i) => `<li>
+    <span class="rk">${i + 1}</span>
+    <span class="tt">${esc(s.title)}${s.flag ? `<small>${s.flag === 'playing' ? 'ON NOW' : 'QUEUED'}</small>` : ''}</span>
+    <span class="vc">${s.votes} vote${s.votes === 1 ? '' : 's'}</span>
+    <button class="btn sm cy" data-q="${s.id}" aria-label="Add ${esc(s.title)} to the queue">+ Queue</button>
+    <span class="vb"><b style="width:${Math.round(s.votes / max * 100)}%"></b></span>
+  </li>`).join('');
+  $('#vBoard').querySelectorAll('[data-q]').forEach(b => b.onclick = () => enqueue(b.dataset.q));
+  $('#vQueueTop').disabled = !top.some(s => !s.flag);
+}
+$('#vOn').onchange = e => cmd('voting', { on: e.target.checked });
+$('#vQr').onchange = e => cmd('voting', { qr: e.target.checked });
+$('#vRepeat').onchange = e => cmd('voting', { repeat: e.target.checked });
+$('#vCopy').onclick = async () => { try { await navigator.clipboard.writeText(location.origin + '/vote'); toast('Vote link copied.'); } catch (e) { prompt('Vote link:', location.origin + '/vote'); } };
+$('#vReset').onclick = () => toast('Clear every vote?', 'Reset votes', () => cmd('resetVotes'));
+$('#vQueueTop').onclick = () => { const s = vboard.songs.filter(x => x.votes && !x.flag).sort((a, b) => b.votes - a.votes)[0]; if (s) enqueue(s.id); };
+
 $('#qAuto').onchange = e => cmd('autoplay', { on: e.target.checked });
 $('#bQClear').onclick = () => toast(`Remove all ${live.queue?.length || 0} songs from the queue?`, 'Clear queue', () => cmd('clearQueue'));
 $('#bSkip').onclick = () => cmd('next');

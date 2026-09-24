@@ -20,6 +20,16 @@ Press **+** next to a song in the library, or **Add to queue** in the routine ed
 
 With **Play the next song automatically** switched on, a finished song shows the celebration screen for 8 seconds, then "Up next" for 5 seconds, then the next song starts. Press **Hold** to stop that countdown. The queue is saved, so it survives a restart.
 
+## Crowd voting
+
+Turn on **Crowd voting** in the admin to let people vote for songs from their phones.
+
+- A **Scan to vote** QR code appears on the stage screen: big in the corner between songs, smaller while people dance. You can hide it and share the link another way (it's `/vote`).
+- The vote page shows song titles only, never the audio, and updates live. When voting is off it says "Voting is closed".
+- **Allow repeat votes** (on by default): each phone can vote once every 5 seconds, as often as it likes. Turn it off for one vote per song per phone.
+- The admin shows a **Most wanted** list with vote counts. You decide what goes in the queue: **+ Queue** on any song, or **Queue the top song**.
+- A song's votes reset when it starts playing, and nobody can vote for the song that's on.
+
 ## Keeping the songs private
 
 The audio files are never public. The song list, routines and audio need either the admin login or a linked screen, and search engines are told not to index any page.
@@ -59,6 +69,7 @@ ADMIN_PASSWORD=choose-one npm start
 | `PORT` | `3000` | Set by Railway automatically. |
 | `DATA_DIR` | `./data` | Where songs and routines are stored. |
 | `ADMIN_PASSWORD` | *(none)* | Password for `/admin`. |
+| `PUBLIC_URL` | *(from the request)* | Optional. The address the voting QR code points to, e.g. `https://glowstep.example.com`. |
 
 ## Notes
 
