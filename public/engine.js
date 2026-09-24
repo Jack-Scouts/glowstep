@@ -213,7 +213,7 @@ class Stage{
     const p=poseAt(lb,moveOf);
     g.save(); g.globalAlpha=.5; g.fillStyle='#000'; g.beginPath(); g.ellipse(cx+p[9]*S,gy+S*.05,S*Math.max(.2,.9-p[10]*.6),S*.14,0,0,Math.PI*2); g.fill(); g.restore();
     drawFig(g,p,cx,gy,S,true);
-    if(live){ this.drawStrip(g,W,H,lb,stripTop,stripH); this.drawHud(g,W,H,lb,pos,col); this.drawMoves(g,W,H,lb,cx,S,stripTop); }
+    if(live){ this.drawStrip(g,W,H,lb,stripTop,stripH); this.drawHud(g,W,H,lb,pos,col); }
     else if(this.mode==='ended') this.drawResults(g,W,H,dt);
     else this.drawAttract(g,W,H,cx);
     this.drawPrompt(g,W,H); this.drawBig(g,W,H);
@@ -299,39 +299,6 @@ class Stage{
     g.fillStyle=gr; g.beginPath(); g.roundRect(W-pad-pw,py,Math.max(2,pw*Math.min(1,dur?pos/dur:0)),8,4); g.fill();
     g.font=`600 ${Math.max(10,H*.024)}px ${BODY}`; g.fillStyle='#B3ACDD'; g.textAlign='right';
     g.fillText(`${fmt(pos)} / ${fmt(dur)}`,W-pad,py+16);
-    g.restore();
-  }
-  // Big "NOW" and "NEXT" move names either side of Zip, sized to read from the back of a crowd.
-  drawMoves(g,W,H,lb,cx,S,stripTop){
-    if(W<H*1.2) return; // no room beside Zip on portrait screens; the strip still shows the moves
-    const k=Math.floor(lb/4), mk=this.tl.moveOf(k), m=MOVES[mk]||MOVES.sway;
-    const i=this.tl.segs.findIndex(sg=>k>=sg.b0&&k<sg.b0+sg.len), nx=i<0?(k<0?this.tl.segs[0]:null):this.tl.segs[i+1];
-    const nm=nx?MOVES[nx.m]||MOVES.sway:null, inBeats=nx?Math.ceil(nx.b0*4-lb):0;
-    // fade out while the giant FREEZE / 3-2-1 text is up
-    const hide=this.big&&(this.big.hold||(performance.now()-this.big.at)/1000<this.big.dur);
-    const vis=this.moveVis=(this.moveVis??1)+((hide?0:1)-(this.moveVis??1))*.25; if(vis<.02) return;
-    const pad=Math.max(12,W*.035), room=cx-S*1.35-pad*1.5, top=H*.34, bottom=stripTop-H*.03;
-    if(room<W*.12) return;
-    g.save(); g.globalAlpha=vis; g.textBaseline='alphabetic';
-    const block=(x,align,label,labelCol,name,col,sub,big)=>{
-      g.textAlign=align;
-      const ls=Math.max(12,H*.04); g.font=`${ls}px ${DISPLAY}`; g.fillStyle=hex(labelCol); g.shadowColor=hex(labelCol); g.shadowBlur=14;
-      g.fillText(label,x,top+ls); g.shadowBlur=0;
-      let fs=Math.min(H*(big?.11:.08),W*.06); g.font=`${fs}px ${DISPLAY}`;
-      const words=name.toUpperCase().split(' '), widest=Math.max(...words.map(w=>g.measureText(w).width));
-      if(widest>room){ fs*=room/widest; g.font=`${fs}px ${DISPLAY}`; }
-      const lines=wrap(g,name.toUpperCase(),room).slice(0,3);
-      let y=top+ls+fs*1.12;
-      for(const ln of lines){ if(y>bottom) break;
-        g.fillStyle='#120E33'; g.fillText(ln,x+fs*.05,y+fs*.05);
-        g.fillStyle=hex(col); g.shadowColor=rgba(col,.85); g.shadowBlur=big?30:18; g.fillText(ln,x,y); g.shadowBlur=0; y+=fs*1.05; }
-      if(sub&&y+H*.02<bottom){ const ss=Math.max(12,H*.042); g.font=`600 ${ss}px ${BODY}`; g.fillStyle='#F6F3FF'; g.fillText(sub,x,y+ss*.35); }
-    };
-    block(pad,'left','NOW',C.sun,m.name,m.col,'',true);
-    if(nm){
-      const soon=inBeats<=4;
-      block(W-pad,'right','NEXT',soon?C.sun:[179,172,221],nm.name,soon?nm.col:[179,172,221],inBeats>0?`in ${inBeats} beat${inBeats===1?'':'s'}`:'',false);
-    }
     g.restore();
   }
   drawAttract(g,W,H,cx){
