@@ -6,8 +6,25 @@ A big-screen dance-along for stages and mini festivals. Upload songs in **/admin
 
 | Page | What it's for |
 |---|---|
-| `/screen` | The stage display. Open it on the computer connected to the big screen, click **Turn on sound** once (browsers need one click before they play audio), and it waits for the admin. |
-| `/admin` | Upload MP3s, check and edit each routine, then load, play, pause and stop songs on the screen. There are also live "shout" buttons (FREEZE!, Make some noise!, or your own text). Works from a laptop or phone. |
+| `/screen` | The stage display. Open the **screen link** (see below) on the computer connected to the big screen, click **Turn on sound** once (browsers need one click before they play audio), and it waits for the admin. The current move and the next one are shown in big letters either side of Zip. |
+| `/admin` | Upload MP3s, check and edit each routine, and add songs to the queue. Play, pause, skip and stop from there. There are also live "shout" buttons (FREEZE!, Make some noise!, or your own text). Works from a laptop or phone. |
+
+## The queue
+
+Press **+** next to a song in the library, or **Add to queue** in the routine editor. In **Up next** you can:
+
+- drag the ⋮⋮ handle to reorder (works on phones too), or focus it and use the arrow keys
+- press **Play now** on any song to stop what's on screen and start it straight away
+- press **Skip to next** to jump to the top of the queue
+- remove songs, or clear the whole queue
+
+With **Play the next song automatically** switched on, a finished song shows the celebration screen for 8 seconds, then "Up next" for 5 seconds, then the next song starts. Press **Hold** to stop that countdown. The queue is saved, so it survives a restart.
+
+## Keeping the songs private
+
+The audio files are never public. The song list, routines and audio need either the admin login or a linked screen, and search engines are told not to index any page.
+
+To link a stage computer, press **Copy screen link** in the admin and open that link once on it. The screen link lets a computer show the screen and play the songs, but it can't open the admin. Changing `ADMIN_PASSWORD` unlinks every screen. Without a password set, everything is open (the admin shows a warning).
 
 ## How the routine is made
 

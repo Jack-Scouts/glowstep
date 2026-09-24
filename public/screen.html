@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
 <title>Glowstep Screen</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -50,6 +51,9 @@ async function syncClock() {
   }
 }
 
+// Decoded songs are big, so only keep the one on screen and the next in the queue.
+function pruneCache(keep) { for (const id of cache.keys()) if (!keep.includes(id)) cache.delete(id); }
+
 function loadSong(id) {
   if (!cache.has(id)) {
     cache.set(id, (async () => {
@@ -65,6 +69,9 @@ function loadSong(id) {
 
 async function apply(s) {
   latest = s; const my = ++applyN;
+  const nextId = s.queue?.[0]?.songId;
+  pruneCache([s.songId, nextId]);
+  if (nextId && nextId !== s.songId) setTimeout(() => loadSong(nextId).catch(() => {}), 1500);
   if (!s.songId) { loadedId = null; stage.setSong(null); stage.idleLabel = DEFAULT_LABEL; stage.idle(); return report(); }
   if (s.songId !== loadedId) {
     stage.setSong(null); stage.idleLabel = 'Loading the next song…'; stage.idle();
@@ -85,6 +92,7 @@ function report() {
 setInterval(report, 2000);
 
 socket.on('connect', async () => { document.getElementById('conn').hidden = true; await syncClock(); if (latest && latest.status === 'playing') apply(latest); });
+socket.on('authError', () => location.reload());
 socket.on('disconnect', () => { document.getElementById('conn').hidden = false; });
 socket.on('state', s => apply(s));
 socket.on('say', m => { const col = m.text.includes('FREEZE') ? GS.C.ice : [GS.C.pink, GS.C.cyan, GS.C.sun][Math.floor(Math.random() * 3)]; stage.say(m.text, col, m.big); });

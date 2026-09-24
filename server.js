@@ -11,7 +11,10 @@ const PORT = process.env.PORT || 3000;
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
 const SONG_DIR = path.join(DATA_DIR, 'songs');
 const PASSWORD = process.env.ADMIN_PASSWORD || '';
-const TOKEN = PASSWORD ? crypto.createHmac('sha256', PASSWORD).update('glowstep-admin').digest('hex') : '';
+const sign = what => PASSWORD ? crypto.createHmac('sha256', PASSWORD).update(what).digest('hex') : '';
+const TOKEN = sign('glowstep-admin');
+const SCREEN_TOKEN = sign('glowstep-screen'); // changes whenever the password does, which unlinks old screens
+const QUEUE_FILE = path.join(DATA_DIR, 'queue.json');
 fs.mkdirSync(SONG_DIR, { recursive: true });
 
 const app = express();
@@ -22,19 +25,40 @@ const io = new Server(server, { maxHttpBufferSize: 1e6 });
 function cookies(header = '') {
   return Object.fromEntries(header.split(';').map(s => s.trim().split('=')).filter(p => p[0]).map(([k, ...v]) => [k, decodeURIComponent(v.join('='))]));
 }
-const isAdmin = req => !PASSWORD || cookies(req.headers.cookie).gs_admin === TOKEN;
+const safeEq = (a = '', b = '') => a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+const isAdminCookie = header => !PASSWORD || safeEq(cookies(header).gs_admin, TOKEN);
+// A screen may fetch songs if it holds the screen cookie (from the admin's screen link) or is logged in as admin.
+const isScreenCookie = header => isAdminCookie(header) || safeEq(cookies(header).gs_screen, SCREEN_TOKEN);
+const isAdmin = req => isAdminCookie(req.headers.cookie);
+const isScreen = req => isScreenCookie(req.headers.cookie);
 function requireAdmin(req, res, next) {
   if (isAdmin(req)) return next();
   if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'Log in to the admin first.' });
   res.redirect('/login');
 }
+function requireScreen(req, res, next) {
+  if (isScreen(req)) return next();
+  res.status(401).json({ error: 'This screen is not linked. Open the screen link from the admin.' });
+}
 
+app.disable('x-powered-by');
+app.use((req, res, next) => { res.setHeader('X-Robots-Tag', 'noindex, nofollow'); next(); });
 app.use(express.json({ limit: '2mb' }));
 
 /* ---------- pages ---------- */
 const page = f => (req, res) => res.sendFile(path.join(__dirname, 'public', f));
 app.get('/', (req, res) => res.redirect('/screen'));
-app.get('/screen', page('screen.html'));
+app.get('/robots.txt', (req, res) => res.type('text/plain').send('User-agent: *\nDisallow: /\n'));
+app.get('/screen', (req, res) => {
+  const key = typeof req.query.key === 'string' ? req.query.key : '';
+  if (PASSWORD && key) {
+    if (!safeEq(key, SCREEN_TOKEN)) return page('screen-locked.html')(req, res);
+    // Swap the key for a cookie so it drops out of the address bar and browser history.
+    res.setHeader('Set-Cookie', `gs_screen=${SCREEN_TOKEN}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 365}`);
+    return res.redirect('/screen');
+  }
+  page(isScreen(req) ? 'screen.html' : 'screen-locked.html')(req, res);
+});
 app.get('/login', (req, res) => (PASSWORD ? page('login.html')(req, res) : res.redirect('/admin')));
 app.get('/admin', requireAdmin, page('admin.html'));
 app.post('/api/login', (req, res) => {
@@ -45,6 +69,7 @@ app.post('/api/login', (req, res) => {
   res.status(401).json({ error: 'That password is not right.' });
 });
 app.get('/api/config', (req, res) => res.json({ passwordSet: !!PASSWORD }));
+app.get('/api/screen-link', requireAdmin, (req, res) => res.json({ path: PASSWORD ? `/screen?key=${SCREEN_TOKEN}` : '/screen' }));
 app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
 /* ---------- songs ---------- */
@@ -61,15 +86,18 @@ function listSongs() {
     .sort((a, b) => a.createdAt - b.createdAt);
 }
 
-app.get('/api/songs', (req, res) => res.json(listSongs()));
-app.get('/api/songs/:id', (req, res) => {
+app.get('/api/songs', requireAdmin, (req, res) => res.json(listSongs()));
+app.get('/api/songs/:id', requireScreen, (req, res) => {
   const s = readSong(req.params.id);
-  s ? res.json(s) : res.status(404).json({ error: 'Song not found.' });
+  if (!s) return res.status(404).json({ error: 'Song not found.' });
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.json(s);
 });
-app.get('/media/:id', (req, res) => {
+app.get('/media/:id', requireScreen, (req, res) => {
   const s = readSong(req.params.id);
   if (!s) return res.status(404).end();
-  res.sendFile(path.join(SONG_DIR, s.file), { maxAge: '7d' });
+  // Never cached by shared caches, never offered as a download.
+  res.sendFile(path.join(SONG_DIR, s.file), { cacheControl: false, headers: { 'Cache-Control': 'private, no-store', 'Content-Disposition': 'inline' } });
 });
 
 const upload = multer({
@@ -123,32 +151,70 @@ app.delete('/api/songs/:id', requireAdmin, (req, res) => {
   if (!s) return res.status(404).json({ error: 'Song not found.' });
   fs.rmSync(path.join(SONG_DIR, s.file), { force: true });
   fs.rmSync(metaPath(s.id), { force: true });
-  if (state.songId === s.id) setState({ songId: null, status: 'idle', offset: 0 });
+  const queue = state.queue.filter(q => q.songId !== s.id);
+  if (state.songId === s.id) setState({ songId: null, status: 'idle', offset: 0, queue });
+  else if (queue.length !== state.queue.length) setState({ queue });
   io.to('admin').emit('songs', listSongs());
   res.json({ ok: true });
 });
 
-/* ---------- live state ---------- */
+/* ---------- live state + queue ---------- */
 // status: idle | ready | playing | paused | ended
-let state = { songId: null, status: 'idle', offset: 0, startedAt: 0, rev: 0 };
-let endTimer = null;
-const LEAD_MS = 600; // give every screen a moment to start in sync
+// queue: songs waiting to play, in order ({ qid, songId }); the song on screen is not in it.
+// auto: the next automatic step once a song ends ({ step: 'next' | 'play', at }), or null.
+let state = { songId: null, status: 'idle', offset: 0, startedAt: 0, rev: 0, queue: [], autoplay: true, auto: null };
+let endTimer = null, autoTimer = null;
+const LEAD_MS = 600;       // give every screen a moment to start in sync
+const SWITCH_MS = 2500;    // longer when the song changes, so screens can fetch and decode it
+const BREAK_MS = 8000;     // celebration screen before the next queued song comes up
+const UP_NEXT_MS = 5000;   // "Up next" screen before it starts playing
+const QUEUE_MAX = 200;
+
+try {
+  const saved = JSON.parse(fs.readFileSync(QUEUE_FILE, 'utf8'));
+  state.queue = (saved.queue || []).filter(q => q && validId(q.songId) && readSong(q.songId)).slice(0, QUEUE_MAX);
+  state.autoplay = saved.autoplay !== false;
+} catch {}
+function saveQueue() {
+  try { fs.writeFileSync(QUEUE_FILE, JSON.stringify({ queue: state.queue, autoplay: state.autoplay })); } catch (e) { console.error('Could not save the queue:', e.message); }
+}
 
 function position() {
   if (state.status === 'playing') return state.offset + (Date.now() - state.startedAt) / 1000;
   return state.offset;
 }
+// Any change cancels a pending automatic step unless the patch sets a new one.
 function setState(patch) {
-  state = { ...state, ...patch, rev: state.rev + 1 };
-  clearTimeout(endTimer);
+  const prevQueue = state.queue, prevAuto = state.autoplay;
+  state = { ...state, auto: null, ...patch, rev: state.rev + 1 };
+  clearTimeout(endTimer); clearTimeout(autoTimer);
   if (state.status === 'playing') {
     const song = readSong(state.songId);
     if (song?.duration) {
       const ms = (song.duration - state.offset) * 1000 + (state.startedAt - Date.now()) + 1500;
-      endTimer = setTimeout(() => setState({ status: 'ended', offset: 0 }), Math.max(0, ms));
+      endTimer = setTimeout(songEnded, Math.max(0, ms));
     }
   }
+  if (state.auto) autoTimer = setTimeout(runAuto, Math.max(0, state.auto.at - Date.now()));
+  if (state.queue !== prevQueue || state.autoplay !== prevAuto) saveQueue();
   io.emit('state', state);
+}
+// After a song finishes, the next queued one comes up by itself (if autoplay is on).
+const autoAfterEnd = (queue = state.queue) => state.autoplay && queue.length ? { step: 'next', at: Date.now() + BREAK_MS } : null;
+function songEnded() { setState({ status: 'ended', offset: 0, auto: autoAfterEnd() }); }
+function runAuto() {
+  const a = state.auto; if (!a) return;
+  if (a.step === 'next') return startFromQueue(state.queue[0]?.qid, false, { step: 'play', at: Date.now() + UP_NEXT_MS });
+  if (a.step === 'play' && state.songId) setState({ status: 'playing', offset: 0, startedAt: Date.now() + LEAD_MS });
+}
+// Take a song off the queue and put it on screen, either waiting ("ready") or playing straight away.
+function startFromQueue(qid, play, auto = null) {
+  let queue = state.queue.filter(q => readSong(q.songId)); // skip anything deleted meanwhile
+  const item = queue.find(q => q.qid === qid);
+  if (!item) return setState({ queue });
+  queue = queue.filter(q => q !== item);
+  const lead = item.songId === state.songId ? LEAD_MS : SWITCH_MS;
+  setState({ songId: item.songId, queue, status: play ? 'playing' : 'ready', offset: 0, startedAt: play ? Date.now() + lead : 0, auto });
 }
 
 const screens = new Map(); // socket.id -> report
@@ -156,12 +222,12 @@ function pushScreens() { io.to('admin').emit('screens', [...screens.values()]); 
 
 io.on('connection', socket => {
   const role = socket.handshake.query.role === 'admin' ? 'admin' : 'screen';
-  const authed = role === 'admin' && (!PASSWORD || cookies(socket.handshake.headers.cookie).gs_admin === TOKEN);
+  const authed = role === 'admin' && isAdminCookie(socket.handshake.headers.cookie);
 
   socket.on('timesync', (_, cb) => typeof cb === 'function' && cb(Date.now()));
-  socket.emit('state', state);
 
   if (role === 'screen') {
+    if (!isScreenCookie(socket.handshake.headers.cookie)) { socket.emit('authError'); return socket.disconnect(true); }
     screens.set(socket.id, { id: socket.id, connectedAt: Date.now(), soundOn: false, loaded: null, pos: 0 });
     pushScreens();
     socket.on('report', r => {
@@ -170,22 +236,45 @@ io.on('connection', socket => {
       pushScreens();
     });
     socket.on('disconnect', () => { screens.delete(socket.id); pushScreens(); });
+    socket.emit('state', state);
     return;
   }
 
   if (!authed) { socket.emit('authError'); return socket.disconnect(true); }
   socket.join('admin');
+  socket.emit('state', state);
   socket.emit('songs', listSongs());
   socket.emit('screens', [...screens.values()]);
 
   socket.on('cmd', (c = {}) => {
     const now = Date.now();
     switch (c.type) {
-      case 'load':
-        if (!readSong(c.songId)) return;
-        return setState({ songId: c.songId, status: 'ready', offset: 0, startedAt: 0 });
+      case 'enqueue': {
+        if (!readSong(c.songId) || state.queue.length >= QUEUE_MAX) return;
+        const queue = [...state.queue, { qid: crypto.randomBytes(5).toString('hex'), songId: c.songId }];
+        return setState({ queue, auto: state.auto || (state.status === 'ended' ? autoAfterEnd(queue) : null) });
+      }
+      case 'unqueue':
+        return setState({ queue: state.queue.filter(q => q.qid !== c.qid), auto: state.auto });
+      case 'reorder': {
+        const byId = new Map(state.queue.map(q => [q.qid, q]));
+        const order = Array.isArray(c.order) ? c.order : [];
+        if (order.length !== byId.size || new Set(order).size !== order.length || !order.every(id => byId.has(id))) return socket.emit('state', state);
+        return setState({ queue: order.map(id => byId.get(id)), auto: state.auto });
+      }
+      case 'clearQueue':
+        return setState({ queue: [] });
+      case 'autoplay':
+        if (!c.on) return setState({ autoplay: false });
+        return setState({ autoplay: true, auto: state.auto || (state.status === 'ended' && state.queue.length ? { step: 'next', at: Date.now() + BREAK_MS } : null) });
+      case 'playNow':
+        return startFromQueue(c.qid, true);
+      case 'next':
+        return startFromQueue(state.queue[0]?.qid, true);
+      case 'hold':
+        return setState({});
       case 'play':
-        if (!state.songId) return;
+        if (!state.songId) return startFromQueue(state.queue[0]?.qid, true);
         return setState({ status: 'playing', offset: state.status === 'ended' ? 0 : state.offset, startedAt: now + LEAD_MS });
       case 'pause':
         if (state.status !== 'playing') return;

@@ -52,6 +52,32 @@ a.link{color:var(--cyan);font-weight:600;text-decoration:none;font-size:14px} a.
 .song .bar{grid-column:1/3;height:4px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden;margin-top:6px}
 .song .bar b{display:block;height:100%;background:linear-gradient(90deg,var(--cyan),var(--pink));width:0}
 .empty{color:var(--muted);font-size:14px;margin:12px 0 0}
+.songs li{display:flex;gap:6px;align-items:stretch}
+.songs li .song{flex:1;min-width:0}
+.qadd{flex:none;width:44px;border-radius:12px;border:1px solid rgba(39,217,245,.4);background:rgba(39,217,245,.08);color:var(--cyan);font-size:22px;font-weight:600;line-height:1}
+.qadd:hover{background:rgba(39,217,245,.18)}
+.song .badge.q{background:rgba(39,217,245,.16);color:var(--cyan)}
+
+/* queue */
+.qhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.qhead h2{margin:0!important}
+.qhead label{font-size:13px;font-weight:600;color:var(--muted);display:flex;gap:6px;align-items:center}
+.queue{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.qi{display:flex;align-items:center;gap:10px;padding:8px 10px 8px 4px;border-radius:12px;background:var(--panel2);border:1px solid transparent;user-select:none}
+.qi.dragging{position:relative;z-index:2;border-color:var(--cyan);box-shadow:0 10px 30px rgba(0,0,0,.45);background:#221b55}
+.qi .grip{flex:none;width:36px;height:40px;border:0;border-radius:8px;background:transparent;color:var(--dim);font-size:18px;letter-spacing:-3px;cursor:grab;touch-action:none}
+.qi .grip:hover{color:var(--ink);background:rgba(255,255,255,.06)}
+.qi.dragging .grip{cursor:grabbing}
+.qi .num{flex:none;width:22px;text-align:right;font-weight:800;color:var(--muted);font-variant-numeric:tabular-nums}
+.qi .info{flex:1;min-width:0}
+.qi .info b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qi .info span{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.qi .x{flex:none;width:36px;height:36px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--muted);font-size:16px}
+.qi .x:hover{color:var(--bad);border-color:rgba(248,113,113,.5)}
+.qi:first-child .num{color:var(--cyan)}
+.qfoot{margin:10px 0 0;font-size:13px;color:var(--muted)}
+.auto{grid-column:1/3;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;border-radius:12px;background:rgba(39,217,245,.1);border:1px solid rgba(39,217,245,.35);color:var(--cyan);font-weight:600;font-size:14px}
+.auto span{flex:1;min-width:0}
 
 /* live */
 .live{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px 20px;align-items:center}
@@ -81,10 +107,10 @@ input[type=range]{accent-color:var(--pink)}
 .fact{font-size:13px;font-weight:600;padding:5px 10px;border-radius:999px;background:var(--panel2);border:1px solid var(--line);font-variant-numeric:tabular-nums}
 .fact.warn{color:var(--warn);border-color:rgba(251,191,36,.4)}
 .pvwrap{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:16px}
-@media (max-width:1200px){.pvwrap{grid-template-columns:1fr}}
+@media (max-width:1200px){.pvwrap{grid-template-columns:minmax(0,1fr)}}
 .pv{width:100%;aspect-ratio:16/9;border-radius:14px;display:block;background:#06051A;max-width:100%}
-.pvbar{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
-.pvbar input[type=range]{flex:1}
+.pvbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:10px;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.pvbar input[type=range]{flex:1;min-width:120px}
 .tools{display:flex;flex-direction:column;gap:14px}
 .tool{display:flex;flex-direction:column;gap:6px}
 .tool .k{font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
@@ -132,6 +158,7 @@ input[type=range]{accent-color:var(--pink)}
   <div class="brand">GLOW<span>STEP</span><small>Admin</small></div>
   <div class="pill" id="scrPill"><i></i><span>Checking screens…</span></div>
   <div class="spacer"></div>
+  <button class="btn sm" id="bScreenLink" hidden title="A link that lets a stage computer show the screen without the admin password">Copy screen link</button>
   <a class="link" href="/screen" target="_blank" rel="noopener">Open the stage screen ↗</a>
 </header>
 <p class="banner" id="pwBanner" hidden>No admin password is set, so anyone with this link can control the screen. Add an <b>ADMIN_PASSWORD</b> variable on Railway to lock it.</p>
@@ -158,14 +185,16 @@ input[type=range]{accent-color:var(--pink)}
       <div class="live">
         <div class="now">
           <div class="st" id="liveStatus">Nothing loaded</div>
-          <div class="nt" id="liveTitle">Pick a song and press “Load on screen”</div>
+          <div class="nt" id="liveTitle">Add songs to the queue, then press Play</div>
         </div>
         <div class="ctrl">
           <button class="btn go" id="bPlay" disabled>Play</button>
+          <button class="btn" id="bSkip" disabled title="Start the next song in the queue now">Skip to next ▸▸</button>
           <button class="btn" id="bRestart" disabled>Restart</button>
           <button class="btn" id="bStop" disabled>Stop</button>
           <button class="btn" id="bClear" disabled>Clear screen</button>
         </div>
+        <div class="auto" id="autoNote" role="status" hidden><span id="autoText"></span><button class="btn sm" id="bHold">Hold</button></div>
         <div class="prog"><span id="livePos">0:00</span><input type="range" id="liveSeek" min="0" max="100" step="0.1" value="0" aria-label="Jump to a point in the song" disabled><span id="liveDur">0:00</span></div>
         <div class="shout">
           <span class="lbl">Shout</span>
@@ -178,13 +207,25 @@ input[type=range]{accent-color:var(--pink)}
       </div>
     </section>
 
+    <section class="card" aria-labelledby="qH">
+      <div class="qhead">
+        <h2 id="qH">Up next</h2>
+        <span class="spacer"></span>
+        <label title="When a song finishes, show the celebration, then start the next song by itself"><input type="checkbox" id="qAuto" checked> Play the next song automatically</label>
+        <button class="btn sm bad" id="bQClear" disabled>Clear queue</button>
+      </div>
+      <ol class="queue" id="queue" aria-label="Queue. Drag the handles, or focus a handle and use the arrow keys, to reorder."></ol>
+      <p class="empty" id="qEmpty">The queue is empty. Press <b>+</b> next to a song in the library, or “Add to queue” in the editor.</p>
+      <p class="qfoot" id="qFoot" hidden>Drag ⋮⋮ to reorder. Skip jumps straight to the top song.</p>
+    </section>
+
     <section class="card" aria-labelledby="edH" id="editor">
       <h2 id="edH">Routine editor</h2>
       <div class="placeholder" id="edEmpty"><div><b>No song selected</b>Upload or pick a song on the left to see its routine.</div></div>
       <div id="edBody" hidden>
         <div class="ed-head">
           <input class="title" id="edTitle" aria-label="Song title" maxlength="80">
-          <button class="btn go" id="bLoad">Load on screen</button>
+          <button class="btn go" id="bLoad">Add to queue</button>
         </div>
         <div class="facts" id="facts"></div>
         <div class="pvwrap">
@@ -266,11 +307,17 @@ socket.on('connect', async () => {
   let best = Infinity;
   for (let i = 0; i < 5; i++) { const t0 = Date.now(); const st = await new Promise(r => socket.timeout(2000).emit('timesync', 0, (e, v) => r(e ? null : v))); const t1 = Date.now(); if (st && t1 - t0 < best) { best = t1 - t0; skew = st - (t0 + t1) / 2; } }
 });
-socket.on('songs', list => { songs = list; renderLibrary(); });
-socket.on('state', s => { live = s; renderLive(); renderLibrary(); });
+socket.on('songs', list => { songs = list; renderLibrary(); renderQueue(); renderLive(); });
+socket.on('state', s => { live = s; renderLive(); renderLibrary(); renderQueue(); });
 socket.on('screens', s => { screens = s; renderScreens(); });
 const cmd = (type, extra = {}) => socket.emit('cmd', { type, ...extra });
-fetch('/api/config').then(r => r.json()).then(c => { $('#pwBanner').hidden = c.passwordSet; });
+fetch('/api/config').then(r => r.json()).then(c => { $('#pwBanner').hidden = c.passwordSet; $('#bScreenLink').hidden = !c.passwordSet; });
+$('#bScreenLink').onclick = async () => {
+  const { path } = await fetch('/api/screen-link').then(r => r.json());
+  const url = location.origin + path;
+  try { await navigator.clipboard.writeText(url); toast('Screen link copied. Open it once on the stage computer. Keep it private: anyone with it can hear the songs.'); }
+  catch (e) { prompt('Copy this link and open it on the stage computer:', url); }
+};
 
 /* ---------- screens pill ---------- */
 function renderScreens() {
@@ -283,17 +330,20 @@ function renderScreens() {
 function renderLibrary() {
   const ul = $('#songs');
   const items = uploads.map(u => `<li><div class="song" aria-busy="true"><span class="t">${esc(u.name)}</span><span class="m">${esc(u.msg)}</span><span class="bar"><b style="width:${Math.round(u.pct * 100)}%"></b></span></div></li>`);
+  const queued = new Map(); (live.queue || []).forEach(q => queued.set(q.songId, (queued.get(q.songId) || 0) + 1));
   for (const s of [...songs].reverse()) {
-    const on = live.songId === s.id;
+    const on = live.songId === s.id, nq = queued.get(s.id);
+    const badge = on ? `<span class="badge">${live.status === 'playing' ? 'PLAYING' : 'ON SCREEN'}</span>` : nq ? `<span class="badge q">QUEUED${nq > 1 ? ' ×' + nq : ''}</span>` : '';
     items.push(`<li><button class="song ${sel?.id === s.id ? 'sel' : ''}" data-id="${s.id}">
       <span class="t">${esc(s.title)}</span>
       <span class="m">${fmt(s.duration)} · ${s.bpm ? Math.round(s.bpm) + ' BPM' : 'no beats yet'} · ${s.barCount} bars</span>
-      ${on ? `<span class="badge">${live.status === 'playing' ? 'PLAYING' : 'ON SCREEN'}</span>` : ''}
-    </button></li>`);
+      ${badge}
+    </button><button class="qadd" data-q="${s.id}" aria-label="Add ${esc(s.title)} to the queue" title="Add to queue">+</button></li>`);
   }
   ul.innerHTML = items.join('');
   $('#libEmpty').hidden = items.length > 0;
   ul.querySelectorAll('button.song').forEach(b => b.onclick = () => selectSong(b.dataset.id));
+  ul.querySelectorAll('button.qadd').forEach(b => b.onclick = () => enqueue(b.dataset.q));
 }
 
 /* ---------- uploads ---------- */
@@ -453,7 +503,70 @@ $('#bReanalyse').onclick = async () => {
     toast(`Found ${Math.round(an.bpm)} BPM. Press “Save changes” to keep it.`);
   } catch (e) { toast('Beat detection failed on this file.'); }
 };
-$('#bLoad').onclick = async () => { if (dirty) await $('#bSave').onclick(); cmd('load', { songId: sel.id }); };
+$('#bLoad').onclick = async () => { if (dirty) await $('#bSave').onclick(); enqueue(sel.id); };
+function enqueue(id) {
+  const s = songs.find(x => x.id === id); cmd('enqueue', { songId: id });
+  toast(`Added “${s?.title || 'song'}” to the queue${live.queue?.length ? ` (position ${live.queue.length + 1})` : ''}.`);
+}
+
+/* ---------- queue ---------- */
+let dragging = false;
+function renderQueue() {
+  if (dragging) return;
+  const ol = $('#queue'), q = live.queue || [], focusQid = document.activeElement?.closest?.('.qi')?.dataset.qid;
+  ol.innerHTML = q.map((item, i) => {
+    const s = songs.find(x => x.id === item.songId);
+    return `<li class="qi" data-qid="${item.qid}">
+      <button class="grip" aria-label="Move ${esc(s?.title || 'song')}, position ${i + 1} of ${q.length}">⋮⋮</button>
+      <span class="num">${i + 1}</span>
+      <span class="info"><b>${esc(s?.title || 'Unknown song')}</b><span>${s ? `${fmt(s.duration)} · ${Math.round(s.bpm || 0)} BPM` : ''}</span></span>
+      <button class="btn sm" data-act="play" title="Stop what's on screen and play this now">Play now</button>
+      <button class="x" data-act="rm" aria-label="Remove ${esc(s?.title || 'song')} from the queue" title="Remove">✕</button>
+    </li>`;
+  }).join('');
+  $('#qEmpty').hidden = q.length > 0; $('#qFoot').hidden = q.length < 2; $('#bQClear').disabled = !q.length;
+  $('#qAuto').checked = live.autoplay !== false;
+  ol.querySelectorAll('.qi').forEach(li => {
+    const qid = li.dataset.qid;
+    li.querySelector('[data-act=play]').onclick = () => cmd('playNow', { qid });
+    li.querySelector('[data-act=rm]').onclick = () => cmd('unqueue', { qid });
+    const grip = li.querySelector('.grip');
+    grip.onkeydown = e => {
+      const d = e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0; if (!d) return;
+      e.preventDefault(); const order = q.map(x => x.qid), i = order.indexOf(qid), j = i + d;
+      if (j < 0 || j >= order.length) return; [order[i], order[j]] = [order[j], order[i]]; cmd('reorder', { order });
+    };
+    grip.onpointerdown = e => dragStart(e, li, grip);
+  });
+  if (focusQid) ol.querySelector(`.qi[data-qid="${focusQid}"] .grip`)?.focus();
+}
+// Pointer-based drag so it works with a mouse and on phones and tablets.
+function dragStart(e, li, grip) {
+  if (e.button > 0) return;
+  e.preventDefault(); grip.setPointerCapture(e.pointerId); grip.focus();
+  const ol = $('#queue'), before = [...ol.children].map(x => x.dataset.qid);
+  const grab = e.clientY - li.getBoundingClientRect().top;
+  dragging = true; li.classList.add('dragging');
+  const move = ev => {
+    li.style.transform = '';
+    const y = ev.clientY, prev = li.previousElementSibling, next = li.nextElementSibling;
+    const mid = el => { const r = el.getBoundingClientRect(); return r.top + r.height / 2; };
+    if (prev && y < mid(prev)) ol.insertBefore(li, prev);
+    else if (next && y > mid(next)) ol.insertBefore(next, li);
+    li.style.transform = `translateY(${y - grab - li.getBoundingClientRect().top}px)`;
+  };
+  const end = () => {
+    grip.removeEventListener('pointermove', move); grip.removeEventListener('pointerup', end); grip.removeEventListener('pointercancel', end);
+    li.style.transform = ''; li.classList.remove('dragging'); dragging = false;
+    const order = [...ol.children].map(x => x.dataset.qid);
+    if (order.join() !== before.join()) cmd('reorder', { order }); else renderQueue();
+  };
+  grip.addEventListener('pointermove', move); grip.addEventListener('pointerup', end); grip.addEventListener('pointercancel', end);
+}
+$('#qAuto').onchange = e => cmd('autoplay', { on: e.target.checked });
+$('#bQClear').onclick = () => toast(`Remove all ${live.queue?.length || 0} songs from the queue?`, 'Clear queue', () => cmd('clearQueue'));
+$('#bSkip').onclick = () => cmd('next');
+$('#bHold').onclick = () => cmd('hold');
 
 /* ---------- preview ---------- */
 $('#pvPlay').onclick = async () => {
@@ -476,6 +589,12 @@ function tick() {
     if (k !== lastNowBar) { lastNowBar = k; document.querySelectorAll('#grid .bar').forEach(el => el.classList.toggle('now', +el.dataset.k === k)); }
   }
   $('#pvPlay').textContent = pv.mode === 'playing' ? 'Pause' : 'Preview';
+  const a = live.auto; $('#autoNote').hidden = !a;
+  if (a) {
+    const secs = Math.max(0, Math.ceil((a.at - Date.now() - skew) / 1000)), nx = songs.find(x => x.id === live.queue?.[0]?.songId);
+    const txt = a.step === 'next' ? `Up next in ${secs}s: ${nx?.title || 'the next song'}` : `Starting in ${secs}s`;
+    if ($('#autoText').textContent !== txt) $('#autoText').textContent = txt;
+  }
   if (live.status === 'playing') { const s = songs.find(x => x.id === live.songId); const p = live.offset + (Date.now() + skew - live.startedAt) / 1000; $('#livePos').textContent = fmt(p); if (document.activeElement !== $('#liveSeek')) $('#liveSeek').value = Math.max(0, p); }
   requestAnimationFrame(tick);
 }
@@ -487,9 +606,10 @@ function renderLive() {
   const label = { idle: 'Nothing loaded', ready: 'Waiting to start', playing: 'Playing now', paused: 'Paused', ended: 'Finished' }[live.status];
   const col = { idle: 'var(--dim)', ready: 'var(--cyan)', playing: 'var(--good)', paused: 'var(--warn)', ended: 'var(--sun)' }[live.status];
   $('#liveStatus').textContent = label; $('#liveStatus').style.color = col;
-  $('#liveTitle').textContent = s ? s.title : 'Pick a song and press “Load on screen”';
-  const has = !!live.songId;
-  $('#bPlay').disabled = !has; $('#bRestart').disabled = !has; $('#bStop').disabled = !has || live.status === 'ready'; $('#bClear').disabled = !has; $('#liveSeek').disabled = !has;
+  $('#liveTitle').textContent = s ? s.title : live.queue?.length ? 'Press Play to start the queue' : 'Add songs to the queue, then press Play';
+  const has = !!live.songId, qn = live.queue?.length || 0;
+  $('#bSkip').disabled = !qn; $('#bSkip').textContent = has ? 'Skip to next ▸▸' : 'Play next ▸▸';
+  $('#bPlay').disabled = !has && !qn; $('#bRestart').disabled = !has; $('#bStop').disabled = !has || live.status === 'ready'; $('#bClear').disabled = !has; $('#liveSeek').disabled = !has;
   $('#bPlay').textContent = live.status === 'playing' ? 'Pause' : live.status === 'paused' ? 'Resume' : 'Play';
   $('#liveDur').textContent = fmt(s?.duration); $('#liveSeek').max = s?.duration || 100;
   if (live.status !== 'playing') { $('#livePos').textContent = fmt(live.offset); $('#liveSeek').value = live.offset; }
