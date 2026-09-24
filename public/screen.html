@@ -5,9 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <title>Glowstep Screen</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Rubik:wght@400;600;800&display=swap">
+<link rel="stylesheet" href="/fonts/fonts.css">
 <style>
   :root{color-scheme:dark;--night:#0C0A24;--pink:#FF3D8B;--cyan:#27D9F5;--sun:#FFD23F;--ink:#F6F3FF;--muted:#B3ACDD}
   [hidden]{display:none!important}
@@ -27,6 +25,13 @@
   #qr span{font-family:Bungee,Impact,sans-serif;font-size:2.3vh;color:#0C0A24;letter-spacing:.02em;white-space:nowrap}
   #qr.big{left:7vw;right:auto;bottom:6vh;width:28vh}
   #qr.big span{font-size:3.2vh}
+  /* "Up next" card for the last seconds of a song */
+  #upnext{position:fixed;left:2.5vw;bottom:23vh;max-width:44vw;padding:1.6vh 2.4vh;border-radius:2vh;background:rgba(8,6,28,.82);border:.3vh solid var(--cyan);
+    box-shadow:0 0 4vh rgba(39,217,245,.35);opacity:0;transform:translateX(-4vw);transition:opacity .5s,transform .5s;pointer-events:none}
+  #upnext.on{opacity:1;transform:none}
+  #upnext small{display:flex;gap:1.2vh;align-items:center;font-family:Bungee,Impact,sans-serif;font-size:2.4vh;color:var(--cyan)}
+  #upnext small i{font-style:normal;font-family:Rubik,system-ui,sans-serif;font-weight:800;font-size:1.7vh;letter-spacing:.08em;padding:.3vh 1vh;border-radius:99px;background:var(--pink);color:#1a0610}
+  #upnext b{display:block;font-family:Bungee,Impact,sans-serif;font-weight:400;font-size:4.6vh;line-height:1.1;margin-top:.6vh;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   #conn{position:fixed;right:14px;bottom:14px;font-size:14px;font-weight:600;padding:6px 12px;border-radius:999px;background:rgba(8,6,28,.85);color:var(--sun);border:1px solid rgba(255,210,63,.4)}
 </style>
 </head>
@@ -37,17 +42,20 @@
   <p>Click once so this screen can play music. It then goes full screen and waits for the admin to start a song.</p>
 </div></div>
 <div id="qr" hidden aria-label="Scan to vote for the next song"><img src="/vote-qr.svg" alt=""><span>SCAN TO VOTE</span></div>
-<div id="conn" hidden>Reconnecting to the admin…</div>
+<div id="upnext" aria-hidden="true"><small>UP NEXT <i id="unTag" hidden>MOST VOTED</i></small><b id="unTitle"></b></div>
+<div id="conn" hidden>Reconnecting…</div>
 <script src="/socket.io/socket.io.js"></script>
 <script src="/engine.js"></script>
 <script>
 (() => {
 const DEFAULT_LABEL = 'Next song coming up soon';
-const stage = new GS.Stage(document.getElementById('stage'), { idleLabel: DEFAULT_LABEL, onEnded: () => stage.mode === 'playing' && stage.end() });
+// Same timings as the server, used to carry on through the queue while offline.
+const BREAK_MS = 8000, UP_NEXT_MS = 5000, LEAD_MS = 600, UP_NEXT_CARD_S = 10;
+const stage = new GS.Stage(document.getElementById('stage'), { idleLabel: DEFAULT_LABEL, onEnded: localEnd });
 const socket = io({ query: { role: 'screen' } });
-let skew = 0, latest = null, loadedId = null, applyN = 0;
-const cache = new Map();
+let skew = 0, latest = null, loadedId = null, applyN = 0, upNextInfo = null, offlineT = null;
 const serverNow = () => Date.now() + skew;
+const $ = id => document.getElementById(id);
 
 async function syncClock() {
   let best = Infinity;
@@ -59,37 +67,90 @@ async function syncClock() {
   }
 }
 
-// Decoded songs are big, so only keep the one on screen and the next in the queue.
-function pruneCache(keep) { for (const id of cache.keys()) if (!keep.includes(id)) cache.delete(id); }
+/* ---------- song store ----------
+   Every queued song is downloaded ahead of time and kept on this computer's disk (browser Cache Storage),
+   so the queue keeps playing if the venue wifi drops. Decoded audio is big, so only the song on screen
+   and the next one are decoded into memory. */
+const STORE = 'glowstep-songs-v1', MAX_STORED = 40;
+const stored = new Set(), titles = new Map(), memStore = new Map(); // memStore: fallback when Cache Storage isn't available
+let storeP = null;
+function openStore() { return storeP ||= (async () => { try { return window.caches ? await caches.open(STORE) : null; } catch (e) { return null; } })(); }
+const urls = id => [`/api/songs/${id}`, `/media/${id}`];
 
-function loadSong(id) {
-  if (!cache.has(id)) {
-    cache.set(id, (async () => {
-      const [song, ab] = await Promise.all([
-        fetch(`/api/songs/${id}`).then(r => { if (!r.ok) throw new Error('missing'); return r.json(); }),
-        fetch(`/media/${id}`).then(r => { if (!r.ok) throw new Error('missing'); return r.arrayBuffer(); })
-      ]);
-      return { song, buf: await GS.decode(ab) };
-    })().catch(e => { cache.delete(id); throw e; }));
+async function readRaw(id) {
+  const c = await openStore(), [su, mu] = urls(id);
+  if (c) {
+    const [rs, rm] = await Promise.all([c.match(su), c.match(mu)]);
+    if (rs && rm) return { song: await rs.json(), ab: await rm.arrayBuffer() };
+  } else if (memStore.has(id)) { const m = memStore.get(id); return { song: m.song, ab: m.ab.slice(0) }; }
+  return null;
+}
+async function download(id) {
+  const c = await openStore(), [su, mu] = urls(id);
+  const [rs, rm] = await Promise.all([fetch(su), fetch(mu)]);
+  if (!rs.ok || !rm.ok) throw new Error('missing');
+  if (c) {
+    await Promise.all([c.put(su, rs.clone()), c.put(mu, rm.clone())]);
+    const song = await rs.json(); titles.set(id, song.title); stored.add(id);
+    return { song, ab: await rm.arrayBuffer() };
   }
-  return cache.get(id);
+  const song = await rs.json(), ab = await rm.arrayBuffer();
+  memStore.set(id, { song, ab }); titles.set(id, song.title); stored.add(id);
+  return { song, ab: ab.slice(0) };
+}
+async function getRaw(id) { return (await readRaw(id)) || download(id); }
+
+// Decoded songs ready to play (only the current and next are kept).
+const decoded = new Map();
+function loadSong(id) {
+  if (!decoded.has(id)) decoded.set(id, (async () => { const { song, ab } = await getRaw(id); titles.set(id, song.title); return { song, buf: await GS.decode(ab) }; })().catch(e => { decoded.delete(id); throw e; }));
+  return decoded.get(id);
 }
 
+// Keep the store in step with the queue: fetch what's missing (one at a time), drop what's no longer needed.
+let wanted = [], syncing = false, retryT = null;
+async function syncStore() {
+  if (syncing || !latest) return; // never prune before we know what the server wants
+  syncing = true; clearTimeout(retryT);
+  try {
+    const c = await openStore(), keep = new Set(wanted);
+    if (c) for (const req of await c.keys()) { const id = new URL(req.url).pathname.split('/').pop(); if (!keep.has(id)) { await c.delete(req); stored.delete(id); } }
+    else for (const id of memStore.keys()) if (!keep.has(id)) { memStore.delete(id); stored.delete(id); }
+    for (const id of wanted) {
+      if (stored.has(id)) continue;
+      if (await readRaw(id)) { stored.add(id); continue; }
+      try { await download(id); report(); } catch (e) { if (!socket.connected) break; retryT = setTimeout(syncStore, 15000); break; }
+    }
+  } catch (e) {}
+  syncing = false; report();
+}
+function want(s) {
+  const ids = [s.songId, upNextInfo?.id, ...(s.queue || []).map(q => q.songId)].filter(Boolean);
+  wanted = [...new Set(ids)].slice(0, MAX_STORED);
+  for (const id of decoded.keys()) if (id !== s.songId && id !== upNextInfo?.id) decoded.delete(id);
+  setTimeout(syncStore, 1500);
+}
+(async () => { // remember what's already on disk from last time
+  const c = await openStore(); if (!c) return;
+  for (const req of await c.keys()) { const p = new URL(req.url).pathname; if (p.startsWith('/media/')) stored.add(p.split('/').pop()); }
+  report();
+})();
+
+/* ---------- applying the admin's state ---------- */
 function showQr(s) {
-  const qr = document.getElementById('qr'), on = !!(s.voting?.on && s.voting?.qr);
+  const qr = $('qr'), on = !!(s.voting?.on && s.voting?.qr);
   qr.hidden = !on; qr.classList.toggle('big', !s.songId || s.status === 'idle');
 }
 
 async function apply(s) {
-  latest = s; const my = ++applyN; showQr(s);
-  const nextId = s.queue?.[0]?.songId;
-  pruneCache([s.songId, nextId]);
-  if (nextId && nextId !== s.songId) setTimeout(() => loadSong(nextId).catch(() => {}), 1500);
+  latest = s; const my = ++applyN; showQr(s); want(s);
+  const nextId = upNextInfo?.id;
+  if (nextId && nextId !== s.songId) setTimeout(() => loadSong(nextId).catch(() => {}), 2500);
   if (!s.songId) { loadedId = null; stage.setSong(null); stage.idleLabel = DEFAULT_LABEL; stage.idle(); return report(); }
   if (s.songId !== loadedId) {
     stage.setSong(null); stage.idleLabel = 'Loading the next song…'; stage.idle();
     try { const { song, buf } = await loadSong(s.songId); if (my !== applyN) return; loadedId = s.songId; stage.setSong(song, buf); }
-    catch (e) { stage.idleLabel = 'That song could not be loaded. Try it again from the admin.'; return report(); }
+    catch (e) { stage.idleLabel = socket.connected ? 'That song could not be loaded. Try it again from the admin.' : 'Waiting for the internet to come back…'; return report(); }
     stage.idleLabel = DEFAULT_LABEL;
   }
   if (s.status === 'playing') stage.play(s.offset + (serverNow() - s.startedAt) / 1000);
@@ -99,31 +160,75 @@ async function apply(s) {
   report();
 }
 
+/* ---------- carrying on while offline ----------
+   The server keeps running the queue even when this screen can't reach it. While disconnected, the screen
+   follows the same steps on its own (celebrate, "up next", play), and snaps back to the server when it returns. */
+function localEnd() {
+  if (stage.mode === 'playing') stage.end();
+  if (socket.connected || !latest || latest.status !== 'playing') return;
+  const auto = latest.autoplay && upNextInfo ? { step: 'next', at: serverNow() + BREAK_MS } : null;
+  latest = { ...latest, status: 'ended', offset: 0, auto };
+  followOffline();
+}
+function followOffline() {
+  clearTimeout(offlineT);
+  const a = latest?.auto; if (socket.connected || !a) return;
+  offlineT = setTimeout(() => {
+    if (socket.connected) return;
+    if (a.step === 'next' && upNextInfo) {
+      const id = upNextInfo.id, queue = latest.queue[0]?.songId === id ? latest.queue.slice(1) : latest.queue;
+      upNextInfo = queue[0] ? { id: queue[0].songId, title: titles.get(queue[0].songId) || '' } : null;
+      apply({ ...latest, songId: id, status: 'ready', queue, offset: 0, startedAt: 0, auto: { step: 'play', at: serverNow() + UP_NEXT_MS } });
+    } else if (a.step === 'play') {
+      apply({ ...latest, status: 'playing', offset: 0, startedAt: serverNow() + LEAD_MS, auto: null });
+      return;
+    } else return;
+    followOffline();
+  }, Math.max(0, a.at - serverNow()));
+}
+
+/* ---------- "Up next" card in the last seconds of a song ---------- */
+setInterval(() => {
+  const card = $('upnext'), dur = stage.song?.duration || 0, left = dur - stage.pos();
+  const show = stage.mode === 'playing' && latest?.autoplay && upNextInfo && upNextInfo.id !== loadedId && dur > 20 && left <= UP_NEXT_CARD_S && left > 0;
+  if (show) { $('unTitle').textContent = upNextInfo.title || titles.get(upNextInfo.id) || ''; $('unTag').hidden = !upNextInfo.voted; }
+  card.classList.toggle('on', !!show);
+}, 250);
+
 function report() {
-  socket.emit('report', { soundOn: stage.soundOn, loaded: loadedId, pos: stage.pos(), size: `${innerWidth}×${innerHeight}` });
+  if (!socket.connected) return;
+  socket.emit('report', { soundOn: stage.soundOn, loaded: loadedId, pos: stage.pos(), size: `${innerWidth}×${innerHeight}`, cached: [...stored] });
 }
 setInterval(report, 2000);
 
-socket.on('connect', async () => { document.getElementById('conn').hidden = true; await syncClock(); if (latest && latest.status === 'playing') apply(latest); });
+socket.on('connect', async () => { clearTimeout(offlineT); $('conn').hidden = true; await syncClock(); if (latest && latest.status === 'playing') apply(latest); syncStore(); });
 socket.on('authError', () => location.reload());
-socket.on('disconnect', () => { document.getElementById('conn').hidden = false; });
-socket.on('state', s => apply(s));
+socket.on('disconnect', () => { $('conn').hidden = false; followOffline(); });
+socket.on('state', s => { clearTimeout(offlineT); apply(s); });
+socket.on('upNext', u => { upNextInfo = u; if (u) titles.set(u.id, u.title); if (latest) want(latest); });
 socket.on('say', m => { const col = m.text.includes('FREEZE') ? GS.C.ice : [GS.C.pink, GS.C.cyan, GS.C.sun][Math.floor(Math.random() * 3)]; stage.say(m.text, col, m.big); });
 socket.on('songUpdated', async id => {
-  if (id !== loadedId) { cache.delete(id); return; }
-  try { const song = await fetch(`/api/songs/${id}`).then(r => r.json()); stage.updateSong(song); const c = await cache.get(id); if (c) c.song = song; } catch (e) {}
+  // refresh the stored copy of the routine, and the one on screen
+  try {
+    const r = await fetch(`/api/songs/${id}`); if (!r.ok) return;
+    const c = await openStore(); if (c && stored.has(id)) await c.put(`/api/songs/${id}`, r.clone()); else if (memStore.has(id)) memStore.get(id).song = await r.clone().json();
+    const song = await r.json(); titles.set(id, song.title);
+    const d = decoded.has(id) && await decoded.get(id).catch(() => null); if (d) d.song = song;
+    if (id === loadedId) stage.updateSong(song);
+  } catch (e) {}
 });
 
 async function fullscreen() { try { if (!document.fullscreenElement) await document.documentElement.requestFullscreen(); } catch (e) {} }
-document.getElementById('gateBtn').onclick = async () => {
+$('gateBtn').onclick = async () => {
   await stage.unlock(); fullscreen();
-  document.getElementById('gate').hidden = true;
+  $('gate').hidden = true;
   if (latest) apply(latest);
   try { await navigator.wakeLock?.request('screen'); } catch (e) {}
 };
 addEventListener('keydown', e => { if (e.key.toLowerCase() === 'f') fullscreen(); });
 let idleT; addEventListener('pointermove', () => { document.body.classList.remove('idle'); clearTimeout(idleT); idleT = setTimeout(() => document.body.classList.add('idle'), 2500); });
 document.fonts?.load('20px Bungee').catch(() => {});
+window.glowstepScreen = { stage, get state() { return latest; }, get stored() { return [...stored]; } }; // for troubleshooting from the console
 })();
 </script>
 </body>

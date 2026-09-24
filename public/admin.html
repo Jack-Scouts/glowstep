@@ -4,9 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Glowstep Admin</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Rubik:wght@400;500;600;800&display=swap">
+<link rel="stylesheet" href="/fonts/fonts.css">
 <style>
 :root{
   color-scheme:dark;
@@ -37,6 +35,31 @@ a.link{color:var(--cyan);font-weight:600;text-decoration:none;font-size:14px} a.
 .card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:18px}
 .card h2{margin:0 0 12px;font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
 .col{display:flex;flex-direction:column;gap:20px;min-width:0}
+
+/* tabs + views */
+.tabs{display:inline-flex;gap:4px;padding:4px;border-radius:14px;background:var(--panel2);border:1px solid var(--line)}
+.tabs a{padding:7px 16px;border-radius:10px;font-weight:600;font-size:14px;color:var(--muted);text-decoration:none}
+.tabs a:hover{color:var(--ink)}
+.tabs a[aria-selected=true]{background:var(--pink);color:#1a0610}
+.wrap.live-view{grid-template-columns:minmax(0,1fr) 400px}
+@media (max-width:640px){header.top{position:static;gap:10px}} /* the mini player covers controls on phones */
+@media (max-width:980px){.wrap.live-view{grid-template-columns:1fr}}
+.banner.bad{background:rgba(248,113,113,.12);border-color:rgba(248,113,113,.4);color:var(--bad);margin-top:12px}
+.lfilter{display:flex;gap:8px;margin-top:14px}
+.lfilter input{flex:1;min-width:0;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg)}
+.lfilter select{padding:9px 10px;border-radius:10px;border:1px solid var(--line);background:var(--bg)}
+.songs.compact{max-height:min(60vh,560px);overflow:auto;margin-top:10px;padding-right:2px}
+.songs.compact .song{padding:9px 12px}
+.qsum{font-size:13px;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums}
+.qi .sv{color:var(--good);font-weight:600} .qi .dl{color:var(--warn);font-weight:600}
+/* mini player: always there in Prepare, and on phones once the main controls scroll away */
+.mini{position:fixed;left:0;right:0;bottom:0;z-index:6;padding:10px 16px calc(env(safe-area-inset-bottom,0px) + 10px);background:rgba(21,16,54,.96);backdrop-filter:blur(8px);border-top:1px solid var(--line)}
+.mini-in{max-width:1500px;margin:0 auto;display:flex;align-items:center;gap:12px}
+.mdot{flex:none;width:10px;height:10px;border-radius:50%;background:var(--dim)}
+.minfo{flex:1;min-width:0}
+.minfo b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.minfo span{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+body.has-mini{padding-bottom:84px}
 
 /* library */
 .drop{display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;padding:22px 14px;border:2px dashed rgba(39,217,245,.45);border-radius:14px;background:rgba(39,217,245,.05);cursor:pointer;transition:background .15s,border-color .15s}
@@ -180,29 +203,19 @@ input[type=range]{accent-color:var(--pink)}
 <body>
 <header class="top">
   <div class="brand">GLOW<span>STEP</span><small>Admin</small></div>
+  <nav class="tabs" role="tablist" aria-label="Admin sections">
+    <a role="tab" href="#live" data-tab="live" aria-selected="true">Live</a>
+    <a role="tab" href="#prepare" data-tab="prepare" aria-selected="false">Prepare</a>
+  </nav>
   <div class="pill" id="scrPill"><i></i><span>Checking screens…</span></div>
   <div class="spacer"></div>
   <button class="btn sm" id="bScreenLink" hidden title="A link that lets a stage computer show the screen without the admin password">Copy screen link</button>
   <a class="link" href="/screen" target="_blank" rel="noopener">Open the stage screen ↗</a>
 </header>
+<p class="banner bad" id="offBanner" role="alert" hidden>You're offline. The stage screen keeps playing its queue; your buttons will work again when the connection is back.</p>
 <p class="banner" id="pwBanner" hidden>No admin password is set, so anyone with this link can control the screen. Add an <b>ADMIN_PASSWORD</b> variable on Railway to lock it.</p>
 
-<div class="wrap">
-  <!-- LIBRARY -->
-  <div class="col">
-    <section class="card" aria-labelledby="libH">
-      <h2 id="libH">Song library</h2>
-      <label class="drop" id="drop" for="file">
-        <b>Drop MP3s here</b>
-        <span>or click to choose. Each song is analysed for beats and gets its own routine.</span>
-      </label>
-      <input type="file" id="file" accept="audio/*,.mp3" multiple hidden>
-      <ul class="songs" id="songs"></ul>
-      <p class="empty" id="libEmpty">No songs yet. Upload your first track above.</p>
-    </section>
-  </div>
-
-  <!-- MAIN -->
+<div class="wrap live-view" data-view="live">
   <div class="col">
     <section class="card" aria-labelledby="liveH">
       <h2 id="liveH">On the stage screen</h2>
@@ -233,7 +246,7 @@ input[type=range]{accent-color:var(--pink)}
 
     <section class="card" aria-labelledby="qH">
       <div class="qhead">
-        <h2 id="qH">Up next</h2>
+        <h2 id="qH">Up next</h2><span class="qsum" id="qSum"></span>
         <span class="spacer"></span>
         <label title="When a song finishes, show the celebration, then start the next song by itself"><input type="checkbox" id="qAuto" checked> Play the next song automatically</label>
         <button class="btn sm bad" id="bQClear" disabled>Clear queue</button>
@@ -241,6 +254,14 @@ input[type=range]{accent-color:var(--pink)}
       <ol class="queue" id="queue" aria-label="Queue. Drag the handles, or focus a handle and use the arrow keys, to reorder."></ol>
       <p class="empty" id="qEmpty">The queue is empty. Press <b>+</b> next to a song in the library, or “Add to queue” in the editor.</p>
       <p class="qfoot" id="qFoot" hidden>Drag ⋮⋮ to reorder. Skip jumps straight to the top song.</p>
+    </section>
+  </div>
+  <div class="col">
+    <section class="card" aria-labelledby="addH">
+      <h2 id="addH">Add songs to the queue</h2>
+      <div class="lfilter"><input type="search" id="addQ" placeholder="Search songs" aria-label="Search songs to add"><select id="addSort" aria-label="Sort songs"><option value="az">A–Z</option><option value="new">Newest</option><option value="votes">Most votes</option></select></div>
+      <ul class="songs compact" id="addSongs"></ul>
+      <p class="empty" id="addEmpty" hidden>No songs yet. Upload some in <a href="#prepare" class="link">Prepare</a>.</p>
     </section>
 
     <section class="card" aria-labelledby="vH">
@@ -266,7 +287,24 @@ input[type=range]{accent-color:var(--pink)}
       </div>
       <ol class="board" id="vBoard"></ol>
     </section>
+  </div>
+</div>
 
+<div class="wrap" data-view="prepare" hidden>
+  <div class="col">
+    <section class="card" aria-labelledby="libH">
+      <h2 id="libH">Song library</h2>
+      <label class="drop" id="drop" for="file">
+        <b>Drop MP3s here</b>
+        <span>or click to choose. Each song is analysed for beats and gets its own routine.</span>
+      </label>
+      <input type="file" id="file" accept="audio/*,.mp3" multiple hidden>
+      <div class="lfilter"><input type="search" id="libQ" placeholder="Search songs" aria-label="Search the song library"><select id="libSort" aria-label="Sort songs"><option value="new">Newest</option><option value="az">A–Z</option><option value="votes">Most votes</option></select></div>
+      <ul class="songs" id="songs"></ul>
+      <p class="empty" id="libEmpty">No songs yet. Upload your first track above.</p>
+    </section>
+  </div>
+  <div class="col">
     <section class="card" aria-labelledby="edH" id="editor">
       <h2 id="edH">Routine editor</h2>
       <div class="placeholder" id="edEmpty"><div><b>No song selected</b>Upload or pick a song on the left to see its routine.</div></div>
@@ -323,6 +361,15 @@ input[type=range]{accent-color:var(--pink)}
     </section>
   </div>
 </div>
+
+<div class="mini" id="mini" hidden>
+  <div class="mini-in">
+    <span class="mdot" id="mDot"></span>
+    <span class="minfo"><b id="mTitle">Nothing on screen</b><span id="mSub"></span></span>
+    <button class="btn go" id="mPlay" disabled>Play</button>
+    <button class="btn" id="mSkip" disabled aria-label="Skip to the next song">▸▸</button>
+  </div>
+</div>
 <div id="toast" hidden></div>
 
 <script src="/socket.io/socket.io.js"></script>
@@ -358,10 +405,13 @@ socket.on('connect', async () => {
   for (let i = 0; i < 5; i++) { const t0 = Date.now(); const st = await new Promise(r => socket.timeout(2000).emit('timesync', 0, (e, v) => r(e ? null : v))); const t1 = Date.now(); if (st && t1 - t0 < best) { best = t1 - t0; skew = st - (t0 + t1) / 2; } }
 });
 socket.on('songs', list => { songs = list; renderLibrary(); renderQueue(); renderLive(); });
-socket.on('state', s => { live = s; renderLive(); renderLibrary(); renderQueue(); renderVoting(); });
-socket.on('screens', s => { screens = s; renderScreens(); });
+socket.on('state', s => { live = s; renderLive(); renderLibrary(); renderQueue(); renderVoting(); renderMini(); });
+socket.on('screens', s => { screens = s; renderScreens(); renderQueue(); });
 socket.on('votes', b => { vboard = b; renderVotes(); renderLibrary(); renderQueue(); });
-const cmd = (type, extra = {}) => socket.emit('cmd', { type, ...extra });
+// Don't let taps pile up while offline and all fire at once on reconnect.
+const cmd = (type, extra = {}) => { if (!socket.connected) return toast("You're offline. Try again when the connection is back."); socket.emit('cmd', { type, ...extra }); };
+socket.on('disconnect', () => { $('#offBanner').hidden = false; });
+socket.on('connect', () => { $('#offBanner').hidden = true; });
 fetch('/api/config').then(r => r.json()).then(c => { $('#pwBanner').hidden = c.passwordSet; $('#bScreenLink').hidden = !c.passwordSet; });
 $('#bScreenLink').onclick = async () => {
   const { path } = await fetch('/api/screen-link').then(r => r.json());
@@ -378,24 +428,66 @@ function renderScreens() {
 }
 
 /* ---------- library ---------- */
-function renderLibrary() {
-  const ul = $('#songs');
-  const items = uploads.map(u => `<li><div class="song" aria-busy="true"><span class="t">${esc(u.name)}</span><span class="m">${esc(u.msg)}</span><span class="bar"><b style="width:${Math.round(u.pct * 100)}%"></b></span></div></li>`);
+// The same library shows in Prepare (click to edit) and in Live (quick add), each with its own search and sort.
+function songRows(query, sort, withUploads) {
+  const items = withUploads ? uploads.map(u => `<li><div class="song" aria-busy="true"><span class="t">${esc(u.name)}</span><span class="m">${esc(u.msg)}</span><span class="bar"><b style="width:${Math.round(u.pct * 100)}%"></b></span></div></li>`) : [];
   const queued = new Map(); (live.queue || []).forEach(q => queued.set(q.songId, (queued.get(q.songId) || 0) + 1));
-  for (const s of [...songs].reverse()) {
-    const on = live.songId === s.id, nq = queued.get(s.id);
+  const q = query.trim().toLowerCase();
+  let list = songs.filter(s => !q || s.title.toLowerCase().includes(q));
+  list = sort === 'az' ? list.sort((a, b) => a.title.localeCompare(b.title))
+    : sort === 'votes' ? list.sort((a, b) => votesOf(b.id) - votesOf(a.id) || b.createdAt - a.createdAt)
+    : list.sort((a, b) => b.createdAt - a.createdAt);
+  for (const s of list) {
+    const on = live.songId === s.id, nq = queued.get(s.id), v = votesOf(s.id);
     const badge = on ? `<span class="badge">${live.status === 'playing' ? 'PLAYING' : 'ON SCREEN'}</span>` : nq ? `<span class="badge q">QUEUED${nq > 1 ? ' ×' + nq : ''}</span>` : '';
-    items.push(`<li><button class="song ${sel?.id === s.id ? 'sel' : ''}" data-id="${s.id}">
+    items.push(`<li><button class="song ${sel?.id === s.id ? 'sel' : ''}" data-id="${s.id}" title="Open in the routine editor">
       <span class="t">${esc(s.title)}</span>
-      <span class="m">${fmt(s.duration)} · ${s.bpm ? Math.round(s.bpm) + ' BPM' : 'no beats yet'} · ${s.barCount} bars${votesOf(s.id) ? ` · <span class="vt">${votesOf(s.id)} vote${votesOf(s.id) === 1 ? '' : 's'}</span>` : ''}</span>
+      <span class="m">${fmt(s.duration)} · ${s.bpm ? Math.round(s.bpm) + ' BPM' : 'no beats yet'} · ${s.barCount} bars${v ? ` · <span class="vt">${v} vote${v === 1 ? '' : 's'}</span>` : ''}</span>
       ${badge}
     </button><button class="qadd" data-q="${s.id}" aria-label="Add ${esc(s.title)} to the queue" title="Add to queue">+</button></li>`);
   }
-  ul.innerHTML = items.join('');
-  $('#libEmpty').hidden = items.length > 0;
-  ul.querySelectorAll('button.song').forEach(b => b.onclick = () => selectSong(b.dataset.id));
-  ul.querySelectorAll('button.qadd').forEach(b => b.onclick = () => enqueue(b.dataset.q));
+  return { html: items.join(''), count: items.length, filtered: !!q && !list.length && songs.length };
 }
+function renderLibrary() {
+  const lib = songRows($('#libQ').value, $('#libSort').value, true), add = songRows($('#addQ').value, $('#addSort').value, false);
+  $('#songs').innerHTML = lib.filtered ? '<li class="empty">No songs match that search.</li>' : lib.html;
+  $('#addSongs').innerHTML = add.filtered ? '<li class="empty">No songs match that search.</li>' : add.html;
+  $('#libEmpty').hidden = lib.count > 0 || lib.filtered; $('#addEmpty').hidden = songs.length > 0;
+  document.querySelectorAll('#songs button.song, #addSongs button.song').forEach(b => b.onclick = () => { showTab('prepare'); selectSong(b.dataset.id); });
+  document.querySelectorAll('#songs button.qadd, #addSongs button.qadd').forEach(b => b.onclick = () => enqueue(b.dataset.q));
+}
+['#libQ', '#addQ'].forEach(id => $(id).oninput = renderLibrary);
+['#libSort', '#addSort'].forEach(id => $(id).onchange = renderLibrary);
+
+/* ---------- tabs ---------- */
+function showTab(name, save = true) {
+  if (!['live', 'prepare'].includes(name)) name = 'live';
+  document.querySelectorAll('[data-view]').forEach(v => v.hidden = v.dataset.view !== name);
+  document.querySelectorAll('[data-tab]').forEach(t => t.setAttribute('aria-selected', t.dataset.tab === name));
+  if (save) { history.replaceState(null, '', '#' + name); try { localStorage.setItem('gs-tab', name); } catch (e) {} }
+  tab = name; renderMini();
+}
+let tab = 'live';
+document.querySelectorAll('[data-tab]').forEach(t => t.onclick = e => { e.preventDefault(); showTab(t.dataset.tab); });
+addEventListener('hashchange', () => showTab(location.hash.slice(1)));
+document.addEventListener('click', e => { const a = e.target.closest('a[href="#prepare"]'); if (a && !a.dataset.tab) { e.preventDefault(); showTab('prepare'); } });
+
+/* ---------- mini player ---------- */
+let liveCardVisible = true;
+new IntersectionObserver(([en]) => { liveCardVisible = en.isIntersecting; renderMini(); }).observe(document.querySelector('[aria-labelledby=liveH]'));
+function renderMini() {
+  const show = tab === 'prepare' || (!liveCardVisible && innerWidth <= 980);
+  $('#mini').hidden = !show; document.body.classList.toggle('has-mini', show);
+  if (!show) return;
+  const s = songs.find(x => x.id === live.songId), qn = live.queue?.length || 0;
+  $('#mTitle').textContent = s ? s.title : qn ? `${qn} song${qn === 1 ? '' : 's'} in the queue` : 'Nothing on screen';
+  $('#mDot').style.background = { playing: 'var(--good)', paused: 'var(--warn)', ready: 'var(--cyan)', ended: 'var(--sun)' }[live.status] || 'var(--dim)';
+  $('#mPlay').disabled = !live.songId && !qn; $('#mPlay').textContent = live.status === 'playing' ? 'Pause' : live.status === 'paused' ? 'Resume' : 'Play';
+  $('#mSkip').disabled = !qn;
+}
+$('#mPlay').onclick = () => $('#bPlay').onclick();
+$('#mSkip').onclick = () => cmd('next');
+addEventListener('resize', renderMini);
 
 /* ---------- uploads ---------- */
 const drop = $('#drop');
@@ -565,22 +657,32 @@ let dragging = false;
 function renderQueue() {
   if (dragging) return;
   const ol = $('#queue'), q = live.queue || [], focusQid = document.activeElement?.closest?.('.qi')?.dataset.qid;
+  // Is each song saved on the stage computer yet? (It downloads the queue ahead in case the wifi drops.)
+  const scr = screens.filter(x => Array.isArray(x.cached));
+  const saved = id => !scr.length ? null : scr.every(x => x.cached?.includes(id));
   ol.innerHTML = q.map((item, i) => {
-    const s = songs.find(x => x.id === item.songId);
+    const s = songs.find(x => x.id === item.songId), sv = saved(item.songId);
+    const svTxt = sv === null ? '' : sv ? ' · <span class="sv" title="Saved on the stage computer, so it plays even if the wifi drops">✓ on screen</span>' : ' · <span class="dl">downloading to screen…</span>';
     return `<li class="qi" data-qid="${item.qid}">
       <button class="grip" aria-label="Move ${esc(s?.title || 'song')}, position ${i + 1} of ${q.length}">⋮⋮</button>
       <span class="num">${i + 1}</span>
-      <span class="info"><b>${esc(s?.title || 'Unknown song')}</b><span>${s ? `${fmt(s.duration)} · ${Math.round(s.bpm || 0)} BPM` : ''}${votesOf(item.songId) ? ` · <span style="color:var(--pink);font-weight:600">${votesOf(item.songId)} vote${votesOf(item.songId) === 1 ? '' : 's'}</span>` : ''}</span></span>
+      <span class="info"><b>${esc(s?.title || 'Unknown song')}</b><span>${s ? `${fmt(s.duration)} · ${Math.round(s.bpm || 0)} BPM` : ''}${votesOf(item.songId) ? ` · <span style="color:var(--pink);font-weight:600">${votesOf(item.songId)} vote${votesOf(item.songId) === 1 ? '' : 's'}</span>` : ''}${svTxt}</span></span>
       <button class="btn sm" data-act="play" title="Stop what's on screen and play this now">Play now</button>
       <button class="x" data-act="rm" aria-label="Remove ${esc(s?.title || 'song')} from the queue" title="Remove">✕</button>
     </li>`;
   }).join('');
   $('#qEmpty').hidden = q.length > 0; $('#qFoot').hidden = q.length < 2; $('#bQClear').disabled = !q.length;
+  const total = q.reduce((t, item) => t + (songs.find(x => x.id === item.songId)?.duration || 0), 0), mins = Math.round(total / 60);
+  $('#qSum').textContent = q.length ? `· ${q.length} song${q.length === 1 ? '' : 's'} · ${mins >= 60 ? `${Math.floor(mins / 60)} h ${mins % 60} min` : `${Math.max(1, mins)} min`}` : '';
   $('#qAuto').checked = live.autoplay !== false;
   ol.querySelectorAll('.qi').forEach(li => {
     const qid = li.dataset.qid;
     li.querySelector('[data-act=play]').onclick = () => cmd('playNow', { qid });
-    li.querySelector('[data-act=rm]').onclick = () => cmd('unqueue', { qid });
+    li.querySelector('[data-act=rm]').onclick = () => {
+      const at = q.findIndex(x => x.qid === qid), songId = q[at]?.songId, t = songs.find(x => x.id === songId)?.title || 'song';
+      cmd('unqueue', { qid });
+      toast(`Removed “${t}” from the queue.`, 'Undo', () => cmd('enqueue', { songId, at }));
+    };
     const grip = li.querySelector('.grip');
     grip.onkeydown = e => {
       const d = e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0; if (!d) return;
@@ -706,6 +808,8 @@ $('#sayText').onkeydown = e => { if (e.key === 'Enter' && e.target.value.trim())
 addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
 document.fonts?.load('20px Bungee').catch(() => {});
 renderLive(); renderEditor();
+let savedTab = null; try { savedTab = localStorage.getItem('gs-tab'); } catch (e) {}
+showTab(location.hash.slice(1) || savedTab || 'live', false);
 })();
 </script>
 </body>
