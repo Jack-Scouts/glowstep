@@ -204,7 +204,7 @@ class Stage{
       const DEMO=['clap','star','robot','wave','punch','windmill','hula','point','stomp'];
       lb=now/1000*2; moveOf=k=>DEMO[Math.floor(k/2)%DEMO.length]; col=MOVES[moveOf(Math.floor(lb/4))].col;
     }
-    const stripH=Math.max(56,Math.min(H*.15,170)), stripTop=H-stripH-Math.max(10,H*.025);
+    const stripH=Math.max(56,H*.16), stripTop=H-stripH-Math.max(10,H*.025);
     let cx=W/2, S=Math.min(H*.145,W*.17), gy=live?stripTop-H*.04:H*.86;
     if(!live&&this.mode!=='ended'&&W>H*1.2){ cx=W*.72; S=Math.min(H*.15,W*.11); }
     if(this.mode==='ended'){ S=Math.min(H*.16,W*.16); gy=H*.9; }
@@ -213,7 +213,7 @@ class Stage{
     const p=poseAt(lb,moveOf);
     g.save(); g.globalAlpha=.5; g.fillStyle='#000'; g.beginPath(); g.ellipse(cx+p[9]*S,gy+S*.05,S*Math.max(.2,.9-p[10]*.6),S*.14,0,0,Math.PI*2); g.fill(); g.restore();
     drawFig(g,p,cx,gy,S,true);
-    if(live){ this.drawStrip(g,W,H,lb,stripTop,stripH); this.drawHud(g,W,H,lb,pos,col); }
+    if(live){ this.drawStrip(g,W,H,lb,stripTop,stripH); this.drawHud(g,W,H,lb,pos,col); this.drawMoves(g,W,H,lb,cx,S,stripTop); }
     else if(this.mode==='ended') this.drawResults(g,W,H,dt);
     else this.drawAttract(g,W,H,cx);
     this.drawPrompt(g,W,H); this.drawBig(g,W,H);
@@ -251,7 +251,7 @@ class Stage{
     g.save(); g.translate(0,gy); g.scale(1,.22); g.translate(0,-gy); g.fillStyle=sp; g.beginPath(); g.arc(cx,gy,S*1.8,0,Math.PI*2); g.fill(); g.restore();
   }
   drawStrip(g,W,H,lb,y,h){
-    const x0=Math.max(34,W*.07), ppb=Math.max(W*.055,34);
+    const x0=Math.max(34,W*.07), ppb=Math.max(W*.065,34);
     g.save(); g.fillStyle='rgba(7,6,26,.8)'; g.beginPath(); g.roundRect(8,y-8,W-16,h+16,16); g.fill(); g.clip();
     for(const s of this.tl.segs){
       const x=x0+(s.b0*4-lb)*ppb, w=s.len*4*ppb-10; if(x>W||x+w<0) continue;
@@ -264,10 +264,12 @@ class Stage{
       g.save(); g.beginPath(); g.roundRect(x,y,w,h,12); g.clip();
       drawFig(g,m.keys[m.hero],cx0+h*.5,y+h*.9,h*.235,false);
       if(room>h*1.45){
-        const fs=Math.max(11,h*.17); g.font=`${fs}px ${DISPLAY}`; g.fillStyle='#F6F3FF'; g.textBaseline='top'; g.textAlign='left';
-        const lines=wrap(g,m.name.toUpperCase(),room-h-12).slice(0,2);
+        const tw=room-h-12; let fs=Math.max(11,h*.2); g.font=`${fs}px ${DISPLAY}`; g.fillStyle='#F6F3FF'; g.textBaseline='top'; g.textAlign='left';
+        const widest=Math.max(...m.name.toUpperCase().split(' ').map(w=>g.measureText(w).width));
+        if(widest>tw){ fs=Math.max(11,fs*tw/widest); g.font=`${fs}px ${DISPLAY}`; } // shrink rather than spill past the box
+        const lines=wrap(g,m.name.toUpperCase(),tw).slice(0,2);
         lines.forEach((ln,i)=>g.fillText(ln,cx0+h*.98,y+h*.2+i*fs*1.1));
-        g.font=`600 ${Math.max(10,h*.11)}px ${BODY}`; g.fillStyle=hex(m.col);
+        g.font=`600 ${Math.max(10,h*.13)}px ${BODY}`; g.fillStyle=hex(m.col);
         g.fillText(`${s.len*4} beats`,cx0+h*.98,y+h*.2+lines.length*fs*1.1+5);
       }
       g.restore(); g.globalAlpha=1;
@@ -276,17 +278,17 @@ class Stage{
     g.save(); g.shadowColor=hex(C.sun); g.shadowBlur=14; g.strokeStyle=hex(C.sun); g.lineWidth=4;
     g.beginPath(); g.moveTo(x0,y-12); g.lineTo(x0,y+h+5); g.stroke();
     g.fillStyle=hex(C.sun); g.beginPath(); g.moveTo(x0-9,y-20); g.lineTo(x0+9,y-20); g.lineTo(x0,y-9); g.closePath(); g.fill();
-    g.shadowBlur=0; g.font=`${Math.max(10,h*.1)}px ${DISPLAY}`; g.textAlign='center'; g.textBaseline='bottom'; g.fillText('NOW',x0,y-22);
+    g.shadowBlur=0; g.font=`${Math.max(10,h*.13)}px ${DISPLAY}`; g.textAlign='center'; g.textBaseline='bottom'; g.fillText('NOW',x0,y-22);
     g.restore();
   }
   drawHud(g,W,H,lb,pos,col){
-    const pad=Math.max(12,W*.025), t1=Math.max(14,H*.036), dur=this.song.duration||0;
+    const pad=Math.max(12,W*.025), t1=Math.max(14,H*.048), dur=this.song.duration||0;
     g.save(); g.textBaseline='top'; g.textAlign='left';
     g.font=`${t1}px ${DISPLAY}`; g.fillStyle='#F6F3FF'; g.shadowColor=hex(C.pink); g.shadowBlur=16;
     g.fillText(fit(g,this.song.title||'Untitled',W*.5),pad,pad+4); g.shadowBlur=0;
-    g.font=`600 ${Math.max(11,H*.02)}px ${BODY}`; g.fillStyle='#B3ACDD'; g.fillText('Copy Zip!  Cyan side · Yellow side',pad,pad+t1*1.25+4);
+    g.font=`600 ${Math.max(11,H*.028)}px ${BODY}`; g.fillStyle='#B3ACDD'; g.fillText('Copy Zip!  Cyan side · Yellow side',pad,pad+t1*1.25+4);
     // right side
-    const bar=this.tl.bar(Math.floor(lb/4)), label=barLabel(bar), fs=Math.max(11,H*.022);
+    const bar=this.tl.bar(Math.floor(lb/4)), label=barLabel(bar), fs=Math.max(11,H*.03);
     g.font=`${fs}px ${DISPLAY}`; const lw=g.measureText(label).width+fs*1.4, lx=W-pad-lw;
     g.strokeStyle=hex(col); g.lineWidth=2; g.fillStyle='rgba(255,255,255,.08)'; g.beginPath(); g.roundRect(lx,pad,lw,fs*1.8,fs); g.fill(); g.stroke();
     g.fillStyle=hex(col); g.textAlign='center'; g.fillText(label,lx+lw/2,pad+fs*.42);
@@ -295,8 +297,41 @@ class Stage{
     g.fillStyle='rgba(255,255,255,.14)'; g.beginPath(); g.roundRect(W-pad-pw,py,pw,8,4); g.fill();
     const gr=g.createLinearGradient(W-pad-pw,0,W-pad,0); gr.addColorStop(0,hex(C.cyan)); gr.addColorStop(1,hex(C.pink));
     g.fillStyle=gr; g.beginPath(); g.roundRect(W-pad-pw,py,Math.max(2,pw*Math.min(1,dur?pos/dur:0)),8,4); g.fill();
-    g.font=`600 ${Math.max(10,H*.018)}px ${BODY}`; g.fillStyle='#B3ACDD'; g.textAlign='right';
+    g.font=`600 ${Math.max(10,H*.024)}px ${BODY}`; g.fillStyle='#B3ACDD'; g.textAlign='right';
     g.fillText(`${fmt(pos)} / ${fmt(dur)}`,W-pad,py+16);
+    g.restore();
+  }
+  // Big "NOW" and "NEXT" move names either side of Zip, sized to read from the back of a crowd.
+  drawMoves(g,W,H,lb,cx,S,stripTop){
+    if(W<H*1.2) return; // no room beside Zip on portrait screens; the strip still shows the moves
+    const k=Math.floor(lb/4), mk=this.tl.moveOf(k), m=MOVES[mk]||MOVES.sway;
+    const i=this.tl.segs.findIndex(sg=>k>=sg.b0&&k<sg.b0+sg.len), nx=i<0?(k<0?this.tl.segs[0]:null):this.tl.segs[i+1];
+    const nm=nx?MOVES[nx.m]||MOVES.sway:null, inBeats=nx?Math.ceil(nx.b0*4-lb):0;
+    // fade out while the giant FREEZE / 3-2-1 text is up
+    const hide=this.big&&(this.big.hold||(performance.now()-this.big.at)/1000<this.big.dur);
+    const vis=this.moveVis=(this.moveVis??1)+((hide?0:1)-(this.moveVis??1))*.25; if(vis<.02) return;
+    const pad=Math.max(12,W*.035), room=cx-S*1.35-pad*1.5, top=H*.34, bottom=stripTop-H*.03;
+    if(room<W*.12) return;
+    g.save(); g.globalAlpha=vis; g.textBaseline='alphabetic';
+    const block=(x,align,label,labelCol,name,col,sub,big)=>{
+      g.textAlign=align;
+      const ls=Math.max(12,H*.04); g.font=`${ls}px ${DISPLAY}`; g.fillStyle=hex(labelCol); g.shadowColor=hex(labelCol); g.shadowBlur=14;
+      g.fillText(label,x,top+ls); g.shadowBlur=0;
+      let fs=Math.min(H*(big?.11:.08),W*.06); g.font=`${fs}px ${DISPLAY}`;
+      const words=name.toUpperCase().split(' '), widest=Math.max(...words.map(w=>g.measureText(w).width));
+      if(widest>room){ fs*=room/widest; g.font=`${fs}px ${DISPLAY}`; }
+      const lines=wrap(g,name.toUpperCase(),room).slice(0,3);
+      let y=top+ls+fs*1.12;
+      for(const ln of lines){ if(y>bottom) break;
+        g.fillStyle='#120E33'; g.fillText(ln,x+fs*.05,y+fs*.05);
+        g.fillStyle=hex(col); g.shadowColor=rgba(col,.85); g.shadowBlur=big?30:18; g.fillText(ln,x,y); g.shadowBlur=0; y+=fs*1.05; }
+      if(sub&&y+H*.02<bottom){ const ss=Math.max(12,H*.042); g.font=`600 ${ss}px ${BODY}`; g.fillStyle='#F6F3FF'; g.fillText(sub,x,y+ss*.35); }
+    };
+    block(pad,'left','NOW',C.sun,m.name,m.col,'',true);
+    if(nm){
+      const soon=inBeats<=4;
+      block(W-pad,'right','NEXT',soon?C.sun:[179,172,221],nm.name,soon?nm.col:[179,172,221],inBeats>0?`in ${inBeats} beat${inBeats===1?'':'s'}`:'',false);
+    }
     g.restore();
   }
   drawAttract(g,W,H,cx){
