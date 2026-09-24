@@ -6,9 +6,7 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#0C0A24">
 <title>Glowstep Vote</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Rubik:wght@400;500;600;800&display=swap">
+<link rel="stylesheet" href="/fonts/fonts.css">
 <style>
 :root{color-scheme:dark;--bg:#0C0A24;--panel:#151036;--panel2:#1C1645;--line:rgba(179,172,221,.18);--ink:#F6F3FF;--muted:#B3ACDD;--dim:#8680B5;
   --pink:#FF3D8B;--cyan:#27D9F5;--sun:#FFD23F;--violet:#8B5CF6;--good:#4ADE80;--bad:#F87171;
@@ -24,6 +22,16 @@ main{max-width:560px;margin:0 auto;padding:calc(env(safe-area-inset-top,0px) + 2
 h1{font-family:var(--display);font-weight:400;font-size:clamp(28px,8vw,40px);line-height:1.05;margin:14px 0 8px}
 h1 em{font-style:normal;color:var(--pink)}
 .sub{margin:0 0 18px;color:var(--muted);font-size:15px}
+.np{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 16px}
+.np div{padding:12px 14px;border-radius:14px;background:var(--panel);border:1px solid var(--line);min-width:0}
+.np .now{border-color:rgba(255,61,139,.55);background:linear-gradient(135deg,rgba(255,61,139,.16),rgba(139,92,246,.1))}
+.np small{display:block;font-size:11px;font-weight:800;letter-spacing:.12em;color:var(--muted);margin-bottom:4px}
+.np .now small{color:var(--pink)}
+.np b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.np ol{list-style:none;margin:0;padding:0;font-size:14px}
+.np ol li{display:block;padding:0;background:none;border:0;border-radius:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.np ol li:first-child{font-weight:600;font-size:16px}
+.np .none{color:var(--dim);font-size:14px}
 .tools{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
 .tools input{flex:1;min-width:0;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--panel);font-size:16px}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:12px;overflow:hidden;flex:none}
@@ -62,6 +70,10 @@ li.top .rank{background:var(--sun);color:#1a1405}
   <section id="open" hidden>
     <h1>Pick the <em>next song!</em></h1>
     <p class="sub" id="sub"></p>
+    <div class="np" id="np" hidden>
+      <div class="now"><small>NOW PLAYING</small><b id="npNow"></b></div>
+      <div><small>UP NEXT</small><ol id="npNext"></ol><span class="none" id="npNone">Your votes decide!</span></div>
+    </div>
     <div class="tools">
       <input type="search" id="q" placeholder="Search songs" aria-label="Search songs" autocomplete="off">
       <span class="seg" role="group" aria-label="Sort"><button data-sort="top" class="on">Top</button><button data-sort="az">A–Z</button></span>
@@ -84,6 +96,10 @@ function toast(msg, good) { const t = $('#toast'); t.textContent = msg; t.classN
 function render() {
   $('#closed').hidden = b.on; $('#open').hidden = !b.on; if (!b.on) return;
   $('#sub').textContent = b.repeat ? 'Tap Vote for the songs you want. You can vote again every 5 seconds, as often as you like.' : 'Tap Vote for the songs you want. One vote per song.';
+  // what's on and what's coming, so people can see their votes working
+  $('#np').hidden = !b.now && !b.next?.length;
+  $('#npNow').textContent = b.now || 'Between songs';
+  $('#npNext').innerHTML = (b.next || []).map(t => `<li>${esc(t)}</li>`).join(''); $('#npNone').hidden = !!b.next?.length;
   // votes for a song are cleared once it plays, so drop our own count too
   for (const s of b.songs) if (!s.votes) delete mine[s.id];
   const ranked = [...b.songs].filter(s => s.votes).sort((x, y) => y.votes - x.votes), rankOf = new Map(ranked.map((s, i) => [s.id, i + 1]));

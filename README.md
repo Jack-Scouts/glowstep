@@ -7,16 +7,20 @@ A big-screen dance-along for stages and mini festivals. Upload songs in **/admin
 | Page | What it's for |
 |---|---|
 | `/screen` | The stage display. Open the **screen link** (see below) on the computer connected to the big screen, click **Turn on sound** once (browsers need one click before they play audio), and it waits for the admin. |
-| `/admin` | Upload MP3s, check and edit each routine, and add songs to the queue. Play, pause, skip and stop from there. There are also live "shout" buttons (FREEZE!, Make some noise!, or your own text). Works from a laptop or phone. |
+| `/admin` | Two tabs. **Live** is for running the show: play, pause, skip and stop, the queue, quick-add songs, crowd voting and "shout" buttons (FREEZE!, Make some noise!, or your own text). **Prepare** is for uploading MP3s and checking or editing each routine. A mini player stays at the bottom of the screen in Prepare (and on phones once you scroll past the controls). Works from a laptop or phone. |
+| `/vote` | The crowd's voting page (only open when you turn voting on). |
 
 ## The queue
 
 Press **+** next to a song in the library, or **Add to queue** in the routine editor. In **Up next** you can:
 
+- see how many songs are queued and how long they'll last
 - drag the ⋮⋮ handle to reorder (works on phones too), or focus it and use the arrow keys
 - press **Play now** on any song to stop what's on screen and start it straight away
 - press **Skip to next** to jump to the top of the queue
-- remove songs, or clear the whole queue
+- remove songs (with Undo), or clear the whole queue
+
+In the last 10 seconds of each song, the stage screen shows an **Up next** card with the next song's name.
 
 With **Play the next song automatically** switched on, a finished song shows the celebration screen for 8 seconds, then "Up next" for 5 seconds, then the next song starts. Press **Hold** to stop that countdown. The queue is saved, so it survives a restart.
 
@@ -30,6 +34,13 @@ Turn on **Crowd voting** in the admin to let people vote for songs from their ph
 - The admin shows a **Most wanted** list with vote counts. You decide what goes in the queue: **+ Queue** on any song, or **Queue the top song**.
 - A song's votes reset when it starts playing, and nobody can vote for the song that's on.
 - **When the queue runs out, play the most-voted song** (on by default, needs auto-play on): after the celebration screen, the crowd's favourite comes up next. A vote arriving after the last song has finished starts that countdown too.
+
+## Poor wifi at the venue
+
+- The stage screen **downloads every song in the queue ahead of time** and keeps it on the stage computer. The queue in the admin shows **✓ on screen** once a song is saved there.
+- If the screen loses its connection, it **carries on by itself**: it finishes the song, shows the celebration, then plays the next queued song, just as the server would. When the connection returns it catches up with the admin.
+- The fonts are part of the app, so the screen looks right without the internet.
+- If the admin loses its connection, a red banner says so and buttons are paused, so taps don't all fire at once when it comes back.
 
 ## Keeping the songs private
 

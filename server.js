@@ -154,7 +154,7 @@ app.put('/api/songs/:id', requireAdmin, (req, res) => {
   const next = { ...s, ...pickSong(req.body), updatedAt: Date.now() };
   fs.writeFileSync(metaPath(s.id), JSON.stringify(next));
   songsChanged();
-  if (state.songId === s.id) io.to('screens').emit('songUpdated', s.id);
+  io.to('screens').emit('songUpdated', s.id); // screens keep stored copies of queued songs too
   res.json(next);
 });
 
@@ -237,8 +237,11 @@ function saveVotes() {
 const onScreen = id => state.songId === id && ['ready', 'playing', 'paused'].includes(state.status);
 function board() {
   const queued = new Set(state.queue.map(q => q.songId));
+  const title = id => listSongs().find(s => s.id === id)?.title;
   return {
     on: state.voting.on, repeat: state.voting.repeat,
+    now: onScreen(state.songId) ? title(state.songId) : null,
+    next: [...new Set(state.queue.map(q => q.songId))].slice(0, 3).map(title).filter(Boolean),
     songs: listSongs().map(s => ({ id: s.id, title: s.title, votes: votes[s.id]?.n || 0, flag: onScreen(s.id) ? 'playing' : queued.has(s.id) ? 'queued' : null }))
   };
 }
@@ -246,7 +249,19 @@ function board() {
 let pushVotesT = null;
 function pushVotes() {
   if (pushVotesT) return;
-  pushVotesT = setTimeout(() => { pushVotesT = null; const b = board(); io.to('admin').emit('votes', b); io.to('voters').emit('votes', b.on ? b : { on: false }); }, 300);
+  pushVotesT = setTimeout(() => { pushVotesT = null; const b = board(); io.to('admin').emit('votes', b); io.to('voters').emit('votes', b.on ? b : { on: false }); pushUpNext(); }, 300);
+}
+// What the screen should show as "Up next" near the end of a song: the top of the queue,
+// or the crowd's favourite if that's what will play by itself.
+let lastUpNext = '';
+function upNext() {
+  const id = state.queue[0]?.songId || (state.autoplay ? topVoted() : null);
+  const s = id && listSongs().find(x => x.id === id);
+  return s ? { id: s.id, title: s.title, voted: !state.queue.length } : null;
+}
+function pushUpNext(force) {
+  const u = upNext(), key = JSON.stringify(u);
+  if (force || key !== lastUpNext) { lastUpNext = key; io.to('screens').emit('upNext', u); }
 }
 function songsChanged() { songsCache = null; io.to('admin').emit('songs', listSongs()); pushVotes(); }
 function voterId(req, res) {
@@ -332,12 +347,14 @@ io.on('connection', socket => {
     pushScreens();
     socket.on('report', r => {
       const cur = screens.get(socket.id); if (!cur || !r) return;
-      screens.set(socket.id, { ...cur, soundOn: !!r.soundOn, loaded: r.loaded || null, pos: +r.pos || 0, size: r.size || null });
+      const cached = Array.isArray(r.cached) ? r.cached.filter(id => typeof id === 'string' && validId(id)).slice(0, QUEUE_MAX) : [];
+      screens.set(socket.id, { ...cur, soundOn: !!r.soundOn, loaded: r.loaded || null, pos: +r.pos || 0, size: r.size || null, cached });
       pushScreens();
     });
     socket.on('disconnect', () => { screens.delete(socket.id); pushScreens(); });
     socket.join('screens');
     socket.emit('state', state);
+    socket.emit('upNext', upNext());
     return;
   }
 
@@ -353,7 +370,9 @@ io.on('connection', socket => {
     switch (c.type) {
       case 'enqueue': {
         if (!readSong(c.songId) || state.queue.length >= QUEUE_MAX) return;
-        const queue = [...state.queue, { qid: crypto.randomBytes(5).toString('hex'), songId: c.songId }];
+        // `at` puts it back where it was (used by Undo after removing a song)
+        const queue = [...state.queue], at = Number.isInteger(c.at) ? Math.max(0, Math.min(queue.length, c.at)) : queue.length;
+        queue.splice(at, 0, { qid: crypto.randomBytes(5).toString('hex'), songId: c.songId });
         return setState({ queue, auto: state.auto || (state.status === 'ended' ? autoAfterEnd({ queue }) : null) });
       }
       case 'unqueue':
