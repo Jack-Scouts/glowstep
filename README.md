@@ -29,6 +29,7 @@ Turn on **Crowd voting** in the admin to let people vote for songs from their ph
 - **Allow repeat votes** (on by default): each phone can vote once every 5 seconds, as often as it likes. Turn it off for one vote per song per phone.
 - The admin shows a **Most wanted** list with vote counts. You decide what goes in the queue: **+ Queue** on any song, or **Queue the top song**.
 - A song's votes reset when it starts playing, and nobody can vote for the song that's on.
+- **When the queue runs out, play the most-voted song** (on by default, needs auto-play on): after the celebration screen, the crowd's favourite comes up next. A vote arriving after the last song has finished starts that countdown too.
 
 ## Keeping the songs private
 

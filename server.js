@@ -175,9 +175,10 @@ app.delete('/api/songs/:id', requireAdmin, (req, res) => {
 // status: idle | ready | playing | paused | ended
 // queue: songs waiting to play, in order ({ qid, songId }); the song on screen is not in it.
 // auto: the next automatic step once a song ends ({ step: 'next' | 'play', at }), or null.
-// voting: crowd voting settings (on, show the QR code on screen, allow repeat votes).
+// voting: crowd voting settings (on, show the QR code on screen, allow repeat votes,
+// play the most-voted song when the queue runs out).
 let state = { songId: null, status: 'idle', offset: 0, startedAt: 0, rev: 0, queue: [], autoplay: true, auto: null,
-  voting: { on: false, qr: true, repeat: true } };
+  voting: { on: false, qr: true, repeat: true, auto: true } };
 let endTimer = null, autoTimer = null;
 const LEAD_MS = 600;       // give every screen a moment to start in sync
 const SWITCH_MS = 2500;    // longer when the song changes, so screens can fetch and decode it
@@ -278,13 +279,30 @@ app.post('/api/vote', (req, res) => {
   if (!state.voting.repeat && rec.by[id]) return res.status(409).json({ error: "You've already voted for this one." });
   rec.n++; rec.by[id] = (rec.by[id] || 0) + 1; lastVote.set(id, now);
   saveVotes(); pushVotes();
+  // A vote after the last song finished can start the next one.
+  if (state.status === 'ended' && !state.auto) { const auto = autoAfterEnd(); if (auto) setState({ auto }); }
   res.json({ ok: true, votes: rec.n, mine: rec.by[id], wait: VOTE_GAP_MS });
 });
 // After a song finishes, the next queued one comes up by itself (if autoplay is on).
-const autoAfterEnd = (queue = state.queue) => state.autoplay && queue.length ? { step: 'next', at: Date.now() + BREAK_MS } : null;
+// When the queue is empty, the crowd's favourite can come up instead.
+function topVoted(voting = state.voting) {
+  if (!voting.on || !voting.auto) return null;
+  let best = null;
+  for (const [id, v] of Object.entries(votes)) if (v.n > 0 && id !== state.songId && readSong(id) && (!best || v.n > best.n)) best = { id, n: v.n };
+  return best?.id || null;
+}
+// Settings can be overridden to ask "what if" before they are saved.
+function autoAfterEnd({ queue = state.queue, autoplay = state.autoplay, voting = state.voting } = {}) {
+  if (state.status !== 'ended' && state.status !== 'playing') return null;
+  return autoplay && (queue.length || topVoted(voting)) ? { step: 'next', at: Date.now() + BREAK_MS } : null;
+}
 function songEnded() { setState({ status: 'ended', offset: 0, auto: autoAfterEnd() }); }
 function runAuto() {
   const a = state.auto; if (!a) return;
+  if (a.step === 'next' && !state.queue.length) {
+    const id = topVoted(); if (!id) return setState({});
+    state = { ...state, queue: [{ qid: crypto.randomBytes(5).toString('hex'), songId: id, voted: true }] };
+  }
   if (a.step === 'next') return startFromQueue(state.queue[0]?.qid, false, { step: 'play', at: Date.now() + UP_NEXT_MS });
   if (a.step === 'play' && state.songId) setState({ status: 'playing', offset: 0, startedAt: Date.now() + LEAD_MS });
 }
@@ -336,7 +354,7 @@ io.on('connection', socket => {
       case 'enqueue': {
         if (!readSong(c.songId) || state.queue.length >= QUEUE_MAX) return;
         const queue = [...state.queue, { qid: crypto.randomBytes(5).toString('hex'), songId: c.songId }];
-        return setState({ queue, auto: state.auto || (state.status === 'ended' ? autoAfterEnd(queue) : null) });
+        return setState({ queue, auto: state.auto || (state.status === 'ended' ? autoAfterEnd({ queue }) : null) });
       }
       case 'unqueue':
         return setState({ queue: state.queue.filter(q => q.qid !== c.qid), auto: state.auto });
@@ -350,7 +368,7 @@ io.on('connection', socket => {
         return setState({ queue: [] });
       case 'autoplay':
         if (!c.on) return setState({ autoplay: false });
-        return setState({ autoplay: true, auto: state.auto || (state.status === 'ended' && state.queue.length ? { step: 'next', at: Date.now() + BREAK_MS } : null) });
+        return setState({ autoplay: true, auto: state.auto || (state.status === 'ended' ? autoAfterEnd({ autoplay: true }) : null) });
       case 'playNow':
         return startFromQueue(c.qid, true);
       case 'next':
@@ -358,7 +376,10 @@ io.on('connection', socket => {
       case 'voting': {
         const v = state.voting;
         const pick = k => typeof c[k] === 'boolean' ? c[k] : v[k];
-        return setState({ voting: { on: pick('on'), qr: pick('qr'), repeat: pick('repeat') }, auto: state.auto });
+        const voting = { on: pick('on'), qr: pick('qr'), repeat: pick('repeat'), auto: pick('auto') };
+        // Keep a pending step only if something can still fill it.
+        const auto = state.auto && (state.queue.length || topVoted(voting)) ? state.auto : state.status === 'ended' ? autoAfterEnd({ voting }) : null;
+        return setState({ voting, auto });
       }
       case 'resetVotes':
         if (c.songId) delete votes[c.songId]; else votes = {};
