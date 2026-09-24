@@ -20,6 +20,13 @@
     background:var(--pink);color:#1a0610;box-shadow:0 8px 0 #a1134f,0 0 60px rgba(255,61,139,.55)}
   #gate button:focus-visible{outline:4px solid var(--sun);outline-offset:4px}
   #gate p{margin:22px 0 0;text-align:center;color:var(--muted);font-size:18px;max-width:40ch;line-height:1.45}
+  /* crowd voting QR: big in the corner when idle, smaller beside Zip while dancing */
+  #qr{position:fixed;right:2.5vw;bottom:23vh;width:19vh;display:flex;flex-direction:column;align-items:center;gap:.8vh;padding:1.2vh;border-radius:2vh;
+    background:#fff;box-shadow:0 0 5vh rgba(255,61,139,.45);transition:all .5s ease}
+  #qr img{width:100%;aspect-ratio:1;display:block}
+  #qr span{font-family:Bungee,Impact,sans-serif;font-size:2.3vh;color:#0C0A24;letter-spacing:.02em;white-space:nowrap}
+  #qr.big{left:7vw;right:auto;bottom:6vh;width:28vh}
+  #qr.big span{font-size:3.2vh}
   #conn{position:fixed;right:14px;bottom:14px;font-size:14px;font-weight:600;padding:6px 12px;border-radius:999px;background:rgba(8,6,28,.85);color:var(--sun);border:1px solid rgba(255,210,63,.4)}
 </style>
 </head>
@@ -29,6 +36,7 @@
   <button id="gateBtn">Turn on sound</button>
   <p>Click once so this screen can play music. It then goes full screen and waits for the admin to start a song.</p>
 </div></div>
+<div id="qr" hidden aria-label="Scan to vote for the next song"><img src="/vote-qr.svg" alt=""><span>SCAN TO VOTE</span></div>
 <div id="conn" hidden>Reconnecting to the admin…</div>
 <script src="/socket.io/socket.io.js"></script>
 <script src="/engine.js"></script>
@@ -67,8 +75,13 @@ function loadSong(id) {
   return cache.get(id);
 }
 
+function showQr(s) {
+  const qr = document.getElementById('qr'), on = !!(s.voting?.on && s.voting?.qr);
+  qr.hidden = !on; qr.classList.toggle('big', !s.songId || s.status === 'idle');
+}
+
 async function apply(s) {
-  latest = s; const my = ++applyN;
+  latest = s; const my = ++applyN; showQr(s);
   const nextId = s.queue?.[0]?.songId;
   pruneCache([s.songId, nextId]);
   if (nextId && nextId !== s.songId) setTimeout(() => loadSong(nextId).catch(() => {}), 1500);
