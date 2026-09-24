@@ -292,8 +292,7 @@ class Stage{
     g.font=`${fs}px ${DISPLAY}`; const lw=g.measureText(label).width+fs*1.4, lx=W-pad-lw;
     g.strokeStyle=hex(col); g.lineWidth=2; g.fillStyle='rgba(255,255,255,.08)'; g.beginPath(); g.roundRect(lx,pad,lw,fs*1.8,fs); g.fill(); g.stroke();
     g.fillStyle=hex(col); g.textAlign='center'; g.fillText(label,lx+lw/2,pad+fs*.42);
-    const py=pad+fs*1.8+12, pw=Math.max(90,W*.15), dotR=Math.max(4,H*.008), bi=((Math.floor(lb)%4)+4)%4;
-    for(let i=0;i<4;i++){ const on=i===bi&&lb>=0; g.fillStyle=on?hex(C.sun):'rgba(255,255,255,.18)'; g.beginPath(); g.arc(W-pad-pw-18-(3-i)*dotR*3.2,py+4,on?dotR*1.35:dotR,0,Math.PI*2); g.fill(); }
+    const py=pad+fs*1.8+12, pw=Math.max(90,W*.15);
     g.fillStyle='rgba(255,255,255,.14)'; g.beginPath(); g.roundRect(W-pad-pw,py,pw,8,4); g.fill();
     const gr=g.createLinearGradient(W-pad-pw,0,W-pad,0); gr.addColorStop(0,hex(C.cyan)); gr.addColorStop(1,hex(C.pink));
     g.fillStyle=gr; g.beginPath(); g.roundRect(W-pad-pw,py,Math.max(2,pw*Math.min(1,dur?pos/dur:0)),8,4); g.fill();
