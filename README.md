@@ -6,7 +6,7 @@ A big-screen dance-along for stages and mini festivals. Upload songs in **/admin
 
 | Page | What it's for |
 |---|---|
-| `/screen` | The stage display. Open the **screen link** (see below) on the computer connected to the big screen, click **Turn on sound** once (browsers need one click before they play audio), and it waits for the admin. The current move and the next one are shown in big letters either side of Zip. |
+| `/screen` | The stage display. Open the **screen link** (see below) on the computer connected to the big screen, click **Turn on sound** once (browsers need one click before they play audio), and it waits for the admin. |
 | `/admin` | Upload MP3s, check and edit each routine, and add songs to the queue. Play, pause, skip and stop from there. There are also live "shout" buttons (FREEZE!, Make some noise!, or your own text). Works from a laptop or phone. |
 
 ## The queue
