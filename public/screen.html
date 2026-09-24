@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Glowstep Screen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Rubik:wght@400;600;800&display=swap">
+<style>
+  :root{color-scheme:dark;--night:#0C0A24;--pink:#FF3D8B;--cyan:#27D9F5;--sun:#FFD23F;--ink:#F6F3FF;--muted:#B3ACDD}
+  [hidden]{display:none!important}
+  html,body{height:100%;margin:0}
+  body{background:var(--night);color:var(--ink);font-family:Rubik,system-ui,sans-serif;overflow:hidden}
+  body.idle{cursor:none}
+  #stage{position:fixed;inset:0;width:100%;height:100%;display:block}
+  #gate{position:fixed;inset:0;display:grid;place-items:center;background:rgba(8,6,28,.72);padding:16px}
+  #gate button{font-family:Bungee,Impact,sans-serif;font-size:clamp(22px,3vw,40px);padding:.7em 1.4em;border-radius:999px;border:0;cursor:pointer;
+    background:var(--pink);color:#1a0610;box-shadow:0 8px 0 #a1134f,0 0 60px rgba(255,61,139,.55)}
+  #gate button:focus-visible{outline:4px solid var(--sun);outline-offset:4px}
+  #gate p{margin:22px 0 0;text-align:center;color:var(--muted);font-size:18px;max-width:40ch;line-height:1.45}
+  #conn{position:fixed;right:14px;bottom:14px;font-size:14px;font-weight:600;padding:6px 12px;border-radius:999px;background:rgba(8,6,28,.85);color:var(--sun);border:1px solid rgba(255,210,63,.4)}
+</style>
+</head>
+<body>
+<canvas id="stage" aria-label="Glowstep stage"></canvas>
+<div id="gate"><div style="display:flex;flex-direction:column;align-items:center">
+  <button id="gateBtn">Turn on sound</button>
+  <p>Click once so this screen can play music. It then goes full screen and waits for the admin to start a song.</p>
+</div></div>
+<div id="conn" hidden>Reconnecting to the admin…</div>
+<script src="/socket.io/socket.io.js"></script>
+<script src="/engine.js"></script>
+<script>
+(() => {
+const DEFAULT_LABEL = 'Next song coming up soon';
+const stage = new GS.Stage(document.getElementById('stage'), { idleLabel: DEFAULT_LABEL, onEnded: () => stage.mode === 'playing' && stage.end() });
+const socket = io({ query: { role: 'screen' } });
+let skew = 0, latest = null, loadedId = null, applyN = 0;
+const cache = new Map();
+const serverNow = () => Date.now() + skew;
+
+async function syncClock() {
+  let best = Infinity;
+  for (let i = 0; i < 6; i++) {
+    const t0 = Date.now();
+    const st = await new Promise(r => socket.timeout(2000).emit('timesync', 0, (err, v) => r(err ? null : v)));
+    const t1 = Date.now();
+    if (st && t1 - t0 < best) { best = t1 - t0; skew = st - (t0 + t1) / 2; }
+  }
+}
+
+function loadSong(id) {
+  if (!cache.has(id)) {
+    cache.set(id, (async () => {
+      const [song, ab] = await Promise.all([
+        fetch(`/api/songs/${id}`).then(r => { if (!r.ok) throw new Error('missing'); return r.json(); }),
+        fetch(`/media/${id}`).then(r => { if (!r.ok) throw new Error('missing'); return r.arrayBuffer(); })
+      ]);
+      return { song, buf: await GS.decode(ab) };
+    })().catch(e => { cache.delete(id); throw e; }));
+  }
+  return cache.get(id);
+}
+
+async function apply(s) {
+  latest = s; const my = ++applyN;
+  if (!s.songId) { loadedId = null; stage.setSong(null); stage.idleLabel = DEFAULT_LABEL; stage.idle(); return report(); }
+  if (s.songId !== loadedId) {
+    stage.setSong(null); stage.idleLabel = 'Loading the next song…'; stage.idle();
+    try { const { song, buf } = await loadSong(s.songId); if (my !== applyN) return; loadedId = s.songId; stage.setSong(song, buf); }
+    catch (e) { stage.idleLabel = 'That song could not be loaded. Try it again from the admin.'; return report(); }
+    stage.idleLabel = DEFAULT_LABEL;
+  }
+  if (s.status === 'playing') stage.play(s.offset + (serverNow() - s.startedAt) / 1000);
+  else if (s.status === 'paused') stage.pause(s.offset);
+  else if (s.status === 'ended') stage.end();
+  else stage.ready();
+  report();
+}
+
+function report() {
+  socket.emit('report', { soundOn: stage.soundOn, loaded: loadedId, pos: stage.pos(), size: `${innerWidth}×${innerHeight}` });
+}
+setInterval(report, 2000);
+
+socket.on('connect', async () => { document.getElementById('conn').hidden = true; await syncClock(); if (latest && latest.status === 'playing') apply(latest); });
+socket.on('disconnect', () => { document.getElementById('conn').hidden = false; });
+socket.on('state', s => apply(s));
+socket.on('say', m => { const col = m.text.includes('FREEZE') ? GS.C.ice : [GS.C.pink, GS.C.cyan, GS.C.sun][Math.floor(Math.random() * 3)]; stage.say(m.text, col, m.big); });
+socket.on('songUpdated', async id => {
+  if (id !== loadedId) { cache.delete(id); return; }
+  try { const song = await fetch(`/api/songs/${id}`).then(r => r.json()); stage.updateSong(song); const c = await cache.get(id); if (c) c.song = song; } catch (e) {}
+});
+
+async function fullscreen() { try { if (!document.fullscreenElement) await document.documentElement.requestFullscreen(); } catch (e) {} }
+document.getElementById('gateBtn').onclick = async () => {
+  await stage.unlock(); fullscreen();
+  document.getElementById('gate').hidden = true;
+  if (latest) apply(latest);
+  try { await navigator.wakeLock?.request('screen'); } catch (e) {}
+};
+addEventListener('keydown', e => { if (e.key.toLowerCase() === 'f') fullscreen(); });
+let idleT; addEventListener('pointermove', () => { document.body.classList.remove('idle'); clearTimeout(idleT); idleT = setTimeout(() => document.body.classList.add('idle'), 2500); });
+document.fonts?.load('20px Bungee').catch(() => {});
+})();
+</script>
+</body>
+</html>

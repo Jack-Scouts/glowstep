@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Glowstep Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Rubik:wght@400;500;600;800&display=swap">
+<style>
+:root{
+  color-scheme:dark;
+  --bg:#0C0A24; --panel:#151036; --panel2:#1C1645; --line:rgba(179,172,221,.18); --ink:#F6F3FF; --muted:#B3ACDD; --dim:#8680B5;
+  --pink:#FF3D8B; --cyan:#27D9F5; --sun:#FFD23F; --violet:#8B5CF6; --ice:#A0E1FF; --good:#4ADE80; --warn:#FBBF24; --bad:#F87171;
+  --display:"Bungee",Impact,"Arial Black",sans-serif; --body:"Rubik",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+[hidden]{display:none!important}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.45 var(--body);min-height:100vh;-webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--sun);outline-offset:2px}
+
+header.top{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+  padding:calc(env(safe-area-inset-top,0px) + 12px) 20px 12px;background:rgba(12,10,36,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.brand{font-family:var(--display);font-size:22px;letter-spacing:.01em}
+.brand span{color:var(--sun)} .brand small{font-family:var(--body);font-weight:600;font-size:13px;color:var(--muted);margin-left:8px;letter-spacing:.1em;text-transform:uppercase}
+.spacer{flex:1}
+.pill{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:600;padding:6px 12px;border-radius:999px;background:var(--panel2);border:1px solid var(--line)}
+.pill i{width:9px;height:9px;border-radius:50%;background:var(--dim)}
+.pill.ok i{background:var(--good);box-shadow:0 0 10px var(--good)} .pill.warn i{background:var(--warn)} .pill.bad i{background:var(--bad)}
+a.link{color:var(--cyan);font-weight:600;text-decoration:none;font-size:14px} a.link:hover{text-decoration:underline}
+
+.wrap{display:grid;grid-template-columns:340px minmax(0,1fr);gap:20px;padding:20px;max-width:1500px;margin:0 auto}
+@media (max-width:980px){.wrap{grid-template-columns:1fr;padding:16px}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:18px}
+.card h2{margin:0 0 12px;font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.col{display:flex;flex-direction:column;gap:20px;min-width:0}
+
+/* library */
+.drop{display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;padding:22px 14px;border:2px dashed rgba(39,217,245,.45);border-radius:14px;background:rgba(39,217,245,.05);cursor:pointer;transition:background .15s,border-color .15s}
+.drop.over{background:rgba(39,217,245,.14);border-color:var(--cyan)}
+.drop b{font-size:16px} .drop span{font-size:13px;color:var(--muted)}
+.songs{list-style:none;margin:14px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
+.song{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;padding:12px;border-radius:12px;background:var(--panel2);border:1px solid transparent;cursor:pointer;text-align:left;width:100%}
+.song:hover{border-color:var(--line)}
+.song.sel{border-color:var(--pink);box-shadow:0 0 0 1px var(--pink) inset}
+.song .t{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.song .m{grid-column:1;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.song .badge{grid-row:1/3;grid-column:2;align-self:center;font-size:11px;font-weight:800;letter-spacing:.08em;padding:4px 8px;border-radius:999px;background:rgba(255,61,139,.18);color:var(--pink)}
+.song .bar{grid-column:1/3;height:4px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden;margin-top:6px}
+.song .bar b{display:block;height:100%;background:linear-gradient(90deg,var(--cyan),var(--pink));width:0}
+.empty{color:var(--muted);font-size:14px;margin:12px 0 0}
+
+/* live */
+.live{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px 20px;align-items:center}
+.now{min-width:0}
+.now .st{font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
+.now .nt{font-family:var(--display);font-size:clamp(20px,2.2vw,28px);line-height:1.1;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prog{grid-column:1/3;display:flex;align-items:center;gap:12px;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.prog input{flex:1}
+.ctrl{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.btn{padding:10px 16px;border-radius:12px;border:1px solid var(--line);background:var(--panel2);font-weight:600;white-space:nowrap}
+.btn:hover:not(:disabled){border-color:var(--muted)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn.go{background:var(--pink);border-color:var(--pink);color:#1a0610}
+.btn.go:hover:not(:disabled){filter:brightness(1.1)}
+.btn.cy{background:rgba(39,217,245,.12);border-color:rgba(39,217,245,.5);color:var(--cyan)}
+.btn.sm{padding:7px 12px;font-size:13px;border-radius:10px}
+.btn.bad{color:var(--bad);border-color:rgba(248,113,113,.4);background:transparent}
+.shout{grid-column:1/3;display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding-top:12px;border-top:1px solid var(--line)}
+.shout .lbl{font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-right:4px}
+.shout input{flex:1;min-width:160px;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg)}
+input[type=range]{accent-color:var(--pink)}
+
+/* editor */
+.ed-head{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+.ed-head input.title{flex:1;min-width:200px;font-family:var(--display);font-size:22px;padding:8px 12px;border-radius:12px;border:1px solid var(--line);background:var(--bg)}
+.facts{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.fact{font-size:13px;font-weight:600;padding:5px 10px;border-radius:999px;background:var(--panel2);border:1px solid var(--line);font-variant-numeric:tabular-nums}
+.fact.warn{color:var(--warn);border-color:rgba(251,191,36,.4)}
+.pvwrap{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:16px}
+@media (max-width:1200px){.pvwrap{grid-template-columns:1fr}}
+.pv{width:100%;aspect-ratio:16/9;border-radius:14px;display:block;background:#06051A;max-width:100%}
+.pvbar{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.pvbar input[type=range]{flex:1}
+.tools{display:flex;flex-direction:column;gap:14px}
+.tool{display:flex;flex-direction:column;gap:6px}
+.tool .k{font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.tool .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.tool .v{min-width:64px;text-align:center;font-weight:600;font-variant-numeric:tabular-nums}
+.tool p{margin:0;font-size:12px;color:var(--dim)}
+.save{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px}
+.dirty{font-size:13px;color:var(--sun);font-weight:600}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:6px;margin-top:18px}
+.bar{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 4px 8px;border-radius:10px;background:var(--panel2);border:1px solid transparent;cursor:pointer;min-width:0}
+.bar:hover{border-color:var(--line)}
+.bar.sel{border-color:var(--sun);box-shadow:0 0 0 1px var(--sun) inset}
+.bar.now{background:rgba(255,61,139,.22)}
+.bar canvas{width:44px;height:44px}
+.bar .n{font-size:11px;font-weight:800;color:var(--muted);font-variant-numeric:tabular-nums;align-self:stretch;display:flex;justify-content:space-between;padding:0 3px}
+.bar .nm{font-size:11px;font-weight:600;text-align:center;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.bar .en{position:absolute;left:6px;right:6px;bottom:3px;height:3px;border-radius:2px}
+.bar .pr{position:absolute;bottom:10px;right:7px;width:7px;height:7px;border-radius:50%;background:var(--sun)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:14px}
+.legend i{display:inline-block;width:18px;height:4px;border-radius:2px;margin-right:6px;vertical-align:middle}
+
+.detail{margin-top:14px;padding:16px;border-radius:14px;background:var(--panel2);border:1px solid rgba(255,210,63,.4);display:flex;flex-direction:column;gap:12px}
+.detail h3{margin:0;font-size:15px}
+.detail h3 span{color:var(--muted);font-weight:500}
+.mpick{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:6px}
+.mpick button{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 4px;border-radius:10px;border:1px solid var(--line);background:var(--bg);font-size:12px;font-weight:600}
+.mpick button.on{border-color:var(--sun);box-shadow:0 0 0 1px var(--sun) inset}
+.mpick canvas{width:40px;height:40px}
+.drow{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.drow label{font-size:13px;color:var(--muted);display:flex;gap:6px;align-items:center}
+.drow input[type=text]{flex:1;min-width:200px;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{border:0;background:transparent;padding:7px 12px;font-size:13px;font-weight:600}
+.seg button.on{background:var(--ink);color:var(--bg)}
+.placeholder{display:grid;place-items:center;text-align:center;min-height:320px;color:var(--muted)}
+.placeholder b{display:block;font-family:var(--display);font-size:24px;color:var(--ink);margin-bottom:6px}
+.banner{margin:0 20px;padding:10px 14px;border-radius:12px;font-size:14px;background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.35);color:var(--warn)}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);padding:12px 16px;border-radius:12px;background:var(--ink);color:var(--bg);font-weight:600;display:flex;gap:12px;align-items:center;z-index:20;box-shadow:0 10px 40px rgba(0,0,0,.5);max-width:calc(100% - 32px)}
+#toast button{border:0;background:transparent;color:var(--pink);font-weight:800}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">GLOW<span>STEP</span><small>Admin</small></div>
+  <div class="pill" id="scrPill"><i></i><span>Checking screens…</span></div>
+  <div class="spacer"></div>
+  <a class="link" href="/screen" target="_blank" rel="noopener">Open the stage screen ↗</a>
+</header>
+<p class="banner" id="pwBanner" hidden>No admin password is set, so anyone with this link can control the screen. Add an <b>ADMIN_PASSWORD</b> variable on Railway to lock it.</p>
+
+<div class="wrap">
+  <!-- LIBRARY -->
+  <div class="col">
+    <section class="card" aria-labelledby="libH">
+      <h2 id="libH">Song library</h2>
+      <label class="drop" id="drop" for="file">
+        <b>Drop MP3s here</b>
+        <span>or click to choose. Each song is analysed for beats and gets its own routine.</span>
+      </label>
+      <input type="file" id="file" accept="audio/*,.mp3" multiple hidden>
+      <ul class="songs" id="songs"></ul>
+      <p class="empty" id="libEmpty">No songs yet. Upload your first track above.</p>
+    </section>
+  </div>
+
+  <!-- MAIN -->
+  <div class="col">
+    <section class="card" aria-labelledby="liveH">
+      <h2 id="liveH">On the stage screen</h2>
+      <div class="live">
+        <div class="now">
+          <div class="st" id="liveStatus">Nothing loaded</div>
+          <div class="nt" id="liveTitle">Pick a song and press “Load on screen”</div>
+        </div>
+        <div class="ctrl">
+          <button class="btn go" id="bPlay" disabled>Play</button>
+          <button class="btn" id="bRestart" disabled>Restart</button>
+          <button class="btn" id="bStop" disabled>Stop</button>
+          <button class="btn" id="bClear" disabled>Clear screen</button>
+        </div>
+        <div class="prog"><span id="livePos">0:00</span><input type="range" id="liveSeek" min="0" max="100" step="0.1" value="0" aria-label="Jump to a point in the song" disabled><span id="liveDur">0:00</span></div>
+        <div class="shout">
+          <span class="lbl">Shout</span>
+          <button class="btn sm cy" data-say="FREEZE!" data-big="1">FREEZE!</button>
+          <button class="btn sm cy" data-say="Make some noise!">Make some noise!</button>
+          <button class="btn sm cy" data-say="Everybody jump!">Everybody jump!</button>
+          <button class="btn sm cy" data-say="You're amazing!">You're amazing!</button>
+          <input type="text" id="sayText" placeholder="Type your own and press Enter" maxlength="60" aria-label="Custom message for the screen">
+        </div>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="edH" id="editor">
+      <h2 id="edH">Routine editor</h2>
+      <div class="placeholder" id="edEmpty"><div><b>No song selected</b>Upload or pick a song on the left to see its routine.</div></div>
+      <div id="edBody" hidden>
+        <div class="ed-head">
+          <input class="title" id="edTitle" aria-label="Song title" maxlength="80">
+          <button class="btn go" id="bLoad">Load on screen</button>
+        </div>
+        <div class="facts" id="facts"></div>
+        <div class="pvwrap">
+          <div>
+            <canvas class="pv" id="pv" aria-label="Routine preview"></canvas>
+            <div class="pvbar">
+              <button class="btn sm" id="pvPlay">Preview</button>
+              <span id="pvPos">0:00</span><input type="range" id="pvSeek" min="0" max="100" step="0.05" value="0" aria-label="Preview position"><span id="pvDur">0:00</span>
+              <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="pvSound" checked> Sound</label>
+            </div>
+          </div>
+          <div class="tools">
+            <div class="tool">
+              <span class="k">Routine</span>
+              <div class="row"><button class="btn sm" id="bRegen">Make a new routine</button></div>
+              <p>Picks fresh moves for the same beats. Your edits are replaced, and you can undo once.</p>
+            </div>
+            <div class="tool">
+              <span class="k">Bar starts on</span>
+              <div class="row"><button class="btn sm" id="dbMinus" aria-label="Move bar start one beat earlier">−</button><span class="v" id="dbVal">beat 1</span><button class="btn sm" id="dbPlus" aria-label="Move bar start one beat later">+</button></div>
+              <p>If moves change a beat early or late, shift this until they land with the “1” of the music.</p>
+            </div>
+            <div class="tool">
+              <span class="k">Sync</span>
+              <div class="row"><button class="btn sm" id="nMinus" aria-label="Dance earlier">−</button><span class="v" id="nVal">0 ms</span><button class="btn sm" id="nPlus" aria-label="Dance later">+</button></div>
+              <p>Nudge Zip earlier (−) or later (+) if the steps feel off the beat.</p>
+            </div>
+            <div class="save">
+              <button class="btn go" id="bSave" disabled>Save changes</button>
+              <span class="dirty" id="dirty" hidden>Unsaved changes</span>
+            </div>
+            <div class="row" style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn sm" id="bReanalyse">Detect beats again</button>
+              <button class="btn sm bad" id="bDelete">Delete song</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="legend">
+          <span><i style="background:var(--violet)"></i>Chill</span><span><i style="background:var(--cyan)"></i>Groove</span><span><i style="background:var(--pink)"></i>Party</span>
+          <span><i style="background:var(--sun);width:7px;height:7px;border-radius:50%"></i>Has a shout-out</span>
+          <span>Click a bar to change its move.</span>
+        </div>
+        <div class="grid" id="grid"></div>
+        <div class="detail" id="detail" hidden></div>
+      </div>
+    </section>
+  </div>
+</div>
+<div id="toast" hidden></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/engine.js"></script>
+<script src="/analyze.js"></script>
+<script>
+(() => {
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+const fmt = GS.fmt;
+const LEVELS = ['Chill','Groove','Party'];
+const LVCOL = ['var(--violet)','var(--cyan)','var(--pink)'];
+
+let songs = [], sel = null, selBuf = null, dirty = false, selBar = null, undoBars = null;
+let live = { songId:null, status:'idle', offset:0, startedAt:0 }, screens = [], skew = 0, uploads = [];
+const pv = new GS.Stage($('#pv'), { idleLabel: 'Press Preview to watch the routine' });
+
+/* ---------- toast ---------- */
+let toastT;
+function toast(msg, action, fn) {
+  const t = $('#toast'); t.innerHTML = `<span>${esc(msg)}</span>` + (action ? `<button>${esc(action)}</button>` : '');
+  if (action) t.querySelector('button').onclick = () => { fn(); t.hidden = true; };
+  t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, action ? 8000 : 3500);
+}
+
+/* ---------- socket ---------- */
+const socket = io({ query: { role: 'admin' } });
+socket.on('authError', () => location.href = '/login');
+socket.on('connect', async () => {
+  let best = Infinity;
+  for (let i = 0; i < 5; i++) { const t0 = Date.now(); const st = await new Promise(r => socket.timeout(2000).emit('timesync', 0, (e, v) => r(e ? null : v))); const t1 = Date.now(); if (st && t1 - t0 < best) { best = t1 - t0; skew = st - (t0 + t1) / 2; } }
+});
+socket.on('songs', list => { songs = list; renderLibrary(); });
+socket.on('state', s => { live = s; renderLive(); renderLibrary(); });
+socket.on('screens', s => { screens = s; renderScreens(); });
+const cmd = (type, extra = {}) => socket.emit('cmd', { type, ...extra });
+fetch('/api/config').then(r => r.json()).then(c => { $('#pwBanner').hidden = c.passwordSet; });
+
+/* ---------- screens pill ---------- */
+function renderScreens() {
+  const p = $('#scrPill'), n = screens.length, silent = screens.filter(s => !s.soundOn).length;
+  p.className = 'pill ' + (!n ? 'bad' : silent ? 'warn' : 'ok');
+  p.querySelector('span').textContent = !n ? 'No screen connected' : silent ? `${n} screen${n > 1 ? 's' : ''} · sound is off (click the screen once)` : `${n} screen${n > 1 ? 's' : ''} connected · sound on`;
+}
+
+/* ---------- library ---------- */
+function renderLibrary() {
+  const ul = $('#songs');
+  const items = uploads.map(u => `<li><div class="song" aria-busy="true"><span class="t">${esc(u.name)}</span><span class="m">${esc(u.msg)}</span><span class="bar"><b style="width:${Math.round(u.pct * 100)}%"></b></span></div></li>`);
+  for (const s of [...songs].reverse()) {
+    const on = live.songId === s.id;
+    items.push(`<li><button class="song ${sel?.id === s.id ? 'sel' : ''}" data-id="${s.id}">
+      <span class="t">${esc(s.title)}</span>
+      <span class="m">${fmt(s.duration)} · ${s.bpm ? Math.round(s.bpm) + ' BPM' : 'no beats yet'} · ${s.barCount} bars</span>
+      ${on ? `<span class="badge">${live.status === 'playing' ? 'PLAYING' : 'ON SCREEN'}</span>` : ''}
+    </button></li>`);
+  }
+  ul.innerHTML = items.join('');
+  $('#libEmpty').hidden = items.length > 0;
+  ul.querySelectorAll('button.song').forEach(b => b.onclick = () => selectSong(b.dataset.id));
+}
+
+/* ---------- uploads ---------- */
+const drop = $('#drop');
+['dragenter','dragover'].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.add('over'); }));
+['dragleave','drop'].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', ev => queue([...ev.dataTransfer.files]));
+$('#file').onchange = e => { queue([...e.target.files]); e.target.value = ''; };
+
+let busy = false;
+function queue(files) {
+  files.filter(f => /^audio\//.test(f.type) || /\.(mp3|m4a|wav|ogg|aac)$/i.test(f.name)).forEach(f => uploads.push({ file: f, name: f.name.replace(/\.[^.]+$/, ''), msg: 'Waiting…', pct: 0 }));
+  renderLibrary(); next();
+}
+async function next() {
+  if (busy || !uploads.length) return; busy = true;
+  const u = uploads[0];
+  try {
+    const ab = await u.file.arrayBuffer();
+    const an = await GSAnalyze.analyze(ab, (msg, pct) => { u.msg = msg; u.pct = pct * .85; renderLibrary(); });
+    const seed = Math.floor(Math.random() * 1e6);
+    an.bars = GSAnalyze.generate(an, seed); an.seed = seed;
+    u.msg = 'Uploading…'; u.pct = .9; renderLibrary();
+    const fd = new FormData(); fd.append('analysis', JSON.stringify(an)); fd.append('audio', u.file);
+    const r = await fetch('/api/songs', { method: 'POST', body: fd });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Upload failed');
+    const song = await r.json();
+    uploads.shift(); busy = false;
+    if (!songs.find(s => s.id === song.id)) songs.push({ ...song, barCount: song.bars?.length || 0 });
+    renderLibrary();
+    if (!sel) selectSong(song.id, ab);
+    toast(`“${song.title}” is ready: ${Math.round(an.bpm)} BPM, ${an.bars.length} bars.`);
+  } catch (e) {
+    uploads.shift(); busy = false; renderLibrary();
+    toast(`Couldn't add “${u.name}”. ${e.message.includes('decode') || e.name === 'EncodingError' ? 'The file could not be read as audio.' : e.message}`);
+  }
+  next();
+}
+
+/* ---------- select + editor ---------- */
+async function selectSong(id, ab) {
+  if (dirty && sel && sel.id !== id) { if (!await confirmInline('You have unsaved changes to this routine. Leave them?')) return; }
+  const r = await fetch(`/api/songs/${id}`); if (!r.ok) return toast('That song could not be found.');
+  sel = await r.json(); sel.nudge = sel.nudge || 0; selBar = null; dirty = false; undoBars = null; selBuf = null;
+  renderLibrary(); renderEditor();
+  pv.setSong(sel, null); pv.ready(); pv.idleLabel = 'Loading audio…';
+  try {
+    const buf = await GS.decode(ab || await fetch(`/media/${id}`).then(r => r.arrayBuffer()));
+    if (sel?.id !== id) return; selBuf = buf; pv.setSong(sel, buf); pv.ready(); pv.idleLabel = 'Press Preview to watch the routine';
+  } catch (e) { pv.idleLabel = 'The audio could not be loaded'; }
+}
+function confirmInline(msg) { return new Promise(res => { toast(msg, 'Leave them', () => res(true)); setTimeout(() => res(false), 8100); }); }
+
+function setDirty(v = true) { dirty = v; $('#dirty').hidden = !v; $('#bSave').disabled = !v; }
+
+function renderEditor() {
+  $('#edEmpty').hidden = !!sel; $('#edBody').hidden = !sel; if (!sel) return;
+  $('#edTitle').value = sel.title || '';
+  const lowConf = sel.confidence && sel.confidence < 1.6;
+  $('#facts').innerHTML = [
+    `${fmt(sel.duration)}`, `${Math.round(sel.bpm || 0)} BPM`, `${sel.beats?.length || 0} beats`, `${sel.bars?.length || 0} bars`,
+    `${(sel.bars || []).filter(b => b.m === 'freeze').length} freeze${(sel.bars || []).filter(b => b.m === 'freeze').length === 1 ? '' : 's'}`
+  ].map(f => `<span class="fact">${f}</span>`).join('') + (lowConf ? `<span class="fact warn">Beat is hard to hear in this track: check the preview</span>` : '');
+  $('#dbVal').textContent = `beat ${(sel.downbeat || 0) + 1}`;
+  $('#nVal').textContent = `${sel.nudge > 0 ? '+' : ''}${sel.nudge} ms`;
+  $('#pvDur').textContent = fmt(sel.duration); $('#pvSeek').max = sel.duration || 100;
+  setDirty(dirty); renderGrid(); renderDetail();
+}
+
+function renderGrid() {
+  const g = $('#grid'); g.innerHTML = '';
+  const tl = new GS.Timeline(sel);
+  (sel.bars || []).forEach((b, k) => {
+    const el = document.createElement('button'); el.className = 'bar' + (selBar === k ? ' sel' : ''); el.dataset.k = k;
+    el.setAttribute('aria-label', `Bar ${k + 1}, ${GS.MOVES[b.m]?.name || b.m}`);
+    el.innerHTML = `<span class="n"><span>${k + 1}</span><span>${fmt(tl.barTime(k))}</span></span>`;
+    el.append(icon(b.m, 72));
+    el.insertAdjacentHTML('beforeend', `<span class="nm">${esc(GS.MOVES[b.m]?.name || b.m)}</span><span class="en" style="background:${b.m === 'freeze' ? 'var(--ice)' : LVCOL[b.l ?? 1]}"></span>${b.p ? '<span class="pr" title="Shout-out"></span>' : ''}`);
+    el.onclick = () => { selBar = k; renderGridSel(); renderDetail(); seekPreview(tl.barTime(k)); };
+    g.append(el);
+  });
+}
+const iconCache = {};
+function icon(id, px) { const key = id + px; if (!iconCache[key]) iconCache[key] = GS.moveIcon(id, px); const c = document.createElement('canvas'); c.width = c.height = px; c.getContext('2d').drawImage(iconCache[key], 0, 0); return c; }
+function renderGridSel() { document.querySelectorAll('#grid .bar').forEach(el => el.classList.toggle('sel', +el.dataset.k === selBar)); }
+
+function segmentOf(k) { const bars = sel.bars, m = bars[k].m; let a = k, z = k; while (a > 0 && bars[a - 1].m === m) a--; while (z < bars.length - 1 && bars[z + 1].m === m) z++; return [a, z]; }
+
+function renderDetail() {
+  const d = $('#detail'); if (selBar == null || !sel?.bars?.[selBar]) { d.hidden = true; return; }
+  const b = sel.bars[selBar], [a, z] = segmentOf(selBar), tl = new GS.Timeline(sel);
+  d.hidden = false;
+  d.innerHTML = `<h3>Bar ${selBar + 1} <span>· starts at ${fmt(tl.barTime(selBar))}${z > a ? ` · part of a ${z - a + 1}-bar ${esc(GS.MOVES[b.m]?.name)}` : ''}</span></h3>
+    <div class="mpick" role="group" aria-label="Move"></div>
+    <div class="drow">
+      <label><input type="checkbox" id="dAll" ${z > a ? 'checked' : ''} ${z > a ? '' : 'disabled'}> Change all ${z - a + 1} bars of this move</label>
+    </div>
+    <div class="drow">
+      <input type="text" id="dSay" maxlength="40" placeholder="Shout-out when this bar starts (optional)" value="${esc(b.p || '')}" aria-label="Shout-out">
+      <span class="seg" role="group" aria-label="Energy">${LEVELS.map((l, i) => `<button data-l="${i}" class="${(b.l ?? 1) === i ? 'on' : ''}">${l}</button>`).join('')}</span>
+    </div>`;
+  const mp = d.querySelector('.mpick');
+  GS.EDITABLE.forEach(id => {
+    const bt = document.createElement('button'); bt.className = b.m === id ? 'on' : ''; bt.append(icon(id, 72));
+    bt.insertAdjacentHTML('beforeend', `<span>${esc(GS.MOVES[id].name)}</span>`);
+    bt.onclick = () => {
+      const [a2, z2] = d.querySelector('#dAll').checked ? segmentOf(selBar) : [selBar, selBar];
+      for (let k = a2; k <= z2; k++) sel.bars[k].m = id;
+      if (!sel.bars[a2].p && GS.MOVES[id].say) sel.bars[a2].p = GS.MOVES[id].say[0];
+      changed(); renderDetail();
+    };
+    mp.append(bt);
+  });
+  d.querySelector('#dSay').oninput = e => { const v = e.target.value.trim(); if (v) b.p = v; else delete b.p; changed(false); };
+  d.querySelector('#dSay').onchange = () => renderGrid();
+  d.querySelectorAll('.seg button').forEach(bt => bt.onclick = () => {
+    const [a2, z2] = d.querySelector('#dAll').checked ? segmentOf(selBar) : [selBar, selBar];
+    for (let k = a2; k <= z2; k++) sel.bars[k].l = +bt.dataset.l;
+    changed(); renderDetail();
+  });
+}
+function changed(regrid = true) { setDirty(true); pv.updateSong(sel); if (regrid) { renderGrid(); renderEditorFacts(); } }
+function renderEditorFacts() { const f = (sel.bars || []).filter(b => b.m === 'freeze').length; const el = [...document.querySelectorAll('#facts .fact')][4]; if (el) el.textContent = `${f} freeze${f === 1 ? '' : 's'}`; }
+
+$('#edTitle').oninput = e => { sel.title = e.target.value; setDirty(true); pv.updateSong(sel); };
+$('#bRegen').onclick = () => {
+  undoBars = JSON.parse(JSON.stringify(sel.bars)); const prevSeed = sel.seed;
+  sel.seed = Math.floor(Math.random() * 1e6); sel.bars = GSAnalyze.generate(sel, sel.seed); selBar = null;
+  changed(); renderDetail();
+  toast('New routine made.', 'Undo', () => { sel.bars = undoBars; sel.seed = prevSeed; changed(); renderDetail(); });
+};
+function shiftDownbeat(d) {
+  sel.downbeat = ((sel.downbeat || 0) + d + 4) % 4; sel.bars = GSAnalyze.generate(sel, sel.seed || 1); selBar = null;
+  $('#dbVal').textContent = `beat ${sel.downbeat + 1}`; changed(); renderDetail(); renderEditor();
+}
+$('#dbMinus').onclick = () => shiftDownbeat(-1); $('#dbPlus').onclick = () => shiftDownbeat(1);
+function nudge(d) { sel.nudge = Math.max(-500, Math.min(500, (sel.nudge || 0) + d)); $('#nVal').textContent = `${sel.nudge > 0 ? '+' : ''}${sel.nudge} ms`; setDirty(true); pv.updateSong(sel); }
+$('#nMinus').onclick = () => nudge(-20); $('#nPlus').onclick = () => nudge(20);
+
+$('#bSave').onclick = async () => {
+  const body = { title: sel.title, bars: sel.bars, downbeat: sel.downbeat, nudge: sel.nudge, seed: sel.seed, beats: sel.beats, energy: sel.energy, bpm: sel.bpm, confidence: sel.confidence, duration: sel.duration };
+  const r = await fetch(`/api/songs/${sel.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (!r.ok) return toast('Saving failed. Check your connection and try again.');
+  setDirty(false); toast(live.songId === sel.id ? 'Saved. The stage screen has the new routine.' : 'Saved.');
+};
+$('#bDelete').onclick = () => toast(`Delete “${sel.title}” for good?`, 'Delete', async () => {
+  const r = await fetch(`/api/songs/${sel.id}`, { method: 'DELETE' }); if (!r.ok) return toast('Delete failed.');
+  sel = null; selBuf = null; dirty = false; pv.setSong(null); pv.idle(); renderEditor(); renderLibrary();
+});
+$('#bReanalyse').onclick = async () => {
+  if (!sel) return; const id = sel.id; toast('Listening to the track again…');
+  try {
+    const ab = await fetch(`/media/${id}`).then(r => r.arrayBuffer());
+    const an = await GSAnalyze.analyze(ab);
+    if (sel?.id !== id) return;
+    Object.assign(sel, an); sel.bars = GSAnalyze.generate(sel, sel.seed || 1); selBar = null; changed(); renderEditor();
+    toast(`Found ${Math.round(an.bpm)} BPM. Press “Save changes” to keep it.`);
+  } catch (e) { toast('Beat detection failed on this file.'); }
+};
+$('#bLoad').onclick = async () => { if (dirty) await $('#bSave').onclick(); cmd('load', { songId: sel.id }); };
+
+/* ---------- preview ---------- */
+$('#pvPlay').onclick = async () => {
+  if (!sel) return;
+  if (pv.mode === 'playing') { pv.pause(); return; }
+  if ($('#pvSound').checked) await pv.unlock();
+  pv.setVolume($('#pvSound').checked ? 1 : 0);
+  pv.play(pv.mode === 'paused' ? pv.pausedPos : +$('#pvSeek').value || 0);
+};
+$('#pvSound').onchange = e => pv.setVolume(e.target.checked ? 1 : 0);
+function seekPreview(t) { if (!sel) return; if (pv.mode === 'playing') pv.play(t); else { pv.pause(t); } $('#pvSeek').value = t; }
+$('#pvSeek').oninput = e => seekPreview(+e.target.value);
+pv.onEnded = () => pv.ready();
+
+let lastNowBar = -1;
+function tick() {
+  if (sel && (pv.mode === 'playing' || pv.mode === 'paused')) {
+    const p = pv.pos(); $('#pvPos').textContent = fmt(p); if (document.activeElement !== $('#pvSeek')) $('#pvSeek').value = p;
+    const tl = pv.tl; const k = tl ? Math.floor(tl.local(p) / 4) : -1;
+    if (k !== lastNowBar) { lastNowBar = k; document.querySelectorAll('#grid .bar').forEach(el => el.classList.toggle('now', +el.dataset.k === k)); }
+  }
+  $('#pvPlay').textContent = pv.mode === 'playing' ? 'Pause' : 'Preview';
+  if (live.status === 'playing') { const s = songs.find(x => x.id === live.songId); const p = live.offset + (Date.now() + skew - live.startedAt) / 1000; $('#livePos').textContent = fmt(p); if (document.activeElement !== $('#liveSeek')) $('#liveSeek').value = Math.max(0, p); }
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+/* ---------- live controls ---------- */
+function renderLive() {
+  const s = songs.find(x => x.id === live.songId);
+  const label = { idle: 'Nothing loaded', ready: 'Waiting to start', playing: 'Playing now', paused: 'Paused', ended: 'Finished' }[live.status];
+  const col = { idle: 'var(--dim)', ready: 'var(--cyan)', playing: 'var(--good)', paused: 'var(--warn)', ended: 'var(--sun)' }[live.status];
+  $('#liveStatus').textContent = label; $('#liveStatus').style.color = col;
+  $('#liveTitle').textContent = s ? s.title : 'Pick a song and press “Load on screen”';
+  const has = !!live.songId;
+  $('#bPlay').disabled = !has; $('#bRestart').disabled = !has; $('#bStop').disabled = !has || live.status === 'ready'; $('#bClear').disabled = !has; $('#liveSeek').disabled = !has;
+  $('#bPlay').textContent = live.status === 'playing' ? 'Pause' : live.status === 'paused' ? 'Resume' : 'Play';
+  $('#liveDur').textContent = fmt(s?.duration); $('#liveSeek').max = s?.duration || 100;
+  if (live.status !== 'playing') { $('#livePos').textContent = fmt(live.offset); $('#liveSeek').value = live.offset; }
+}
+$('#bPlay').onclick = () => cmd(live.status === 'playing' ? 'pause' : 'play');
+$('#bRestart').onclick = () => cmd('restart');
+$('#bStop').onclick = () => cmd('stop');
+$('#bClear').onclick = () => cmd('clear');
+$('#liveSeek').onchange = e => cmd('seek', { to: +e.target.value });
+document.querySelectorAll('[data-say]').forEach(b => b.onclick = () => cmd('say', { text: b.dataset.say, big: !!b.dataset.big }));
+$('#sayText').onkeydown = e => { if (e.key === 'Enter' && e.target.value.trim()) { cmd('say', { text: e.target.value.trim() }); e.target.value = ''; } };
+addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+document.fonts?.load('20px Bungee').catch(() => {});
+renderLive(); renderEditor();
+})();
+</script>
+</body>
+</html>
